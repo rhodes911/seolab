@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Detect project
+        id: detect
+        run: |
+          if [ -f package.json ]; then
+            echo "has_node=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_node=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Install deps
+        if: steps.detect.outputs.has_node == 'true'
+        run: npm ci
+      - name: Lint
+        if: steps.detect.outputs.has_node == 'true'
+        run: npm run lint --if-present
+      - name: Typecheck
+        if: steps.detect.outputs.has_node == 'true'
+        run: npm run typecheck --if-present
+      - name: Test
+        if: steps.detect.outputs.has_node == 'true'
+        run: npm test --if-present -- --ci --reporters=default --colors

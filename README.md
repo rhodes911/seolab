@@ -46,6 +46,7 @@ Suggested project layout:
 /app
   /dashboard
   /[...slug]/page.tsx     # renders MarkdownPage by content slug
+/app/globals.css          # Tailwind base + theme tokens (CSS variables)
 /components               # AppShell, MarkdownPage, ToC, Checklist, PrevNext, etc.
 /content                  # the Markdown library (source of truth)
 /lib
@@ -55,6 +56,138 @@ Suggested project layout:
   /seo                    # buildMeta, schema, canonical, slugify, joinUrl
 /theme                    # tokens and global styles
 /config                   # app.ts with site metadata + feature flags
+tailwind.config.ts        # Tailwind setup (darkMode: 'class', content globs, plugins)
+postcss.config.js         # PostCSS setup
+```
+
+### TailwindCSS UI and theming (simple, mobile, dark/light)
+Use Tailwind for rapid, consistent UI. Keep theming centralized with CSS variables so switching light/dark is trivial and components never hardcode colors.
+
+1) Tailwind config (key points)
+
+```ts
+// tailwind.config.ts
+import type { Config } from 'tailwindcss'
+
+export default {
+  darkMode: 'class',
+  content: [
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './content/**/*.{md,mdx}',
+  ],
+  theme: {
+    extend: {
+      // Use CSS variables at runtime; you can also add sizing/spacing scale here
+      colors: {
+        // Optional named tokens if you prefer theme('colors.bg') usage
+        bg: 'var(--bg)',
+        fg: 'var(--fg)',
+        muted: 'var(--muted)',
+        primary: 'var(--primary)',
+        accent: 'var(--accent)',
+        success: 'var(--success)',
+        warning: 'var(--warning)',
+        danger: 'var(--danger)',
+        border: 'var(--border)',
+        card: 'var(--card)',
+        ring: 'var(--ring)',
+      },
+    },
+  },
+  plugins: [require('@tailwindcss/typography'), require('@tailwindcss/forms')],
+} satisfies Config
+```
+
+2) Centralized theme tokens with CSS variables
+
+Put tokens in `app/globals.css` (or `/theme/tokens.css` and import it). Light mode on `:root`, dark overrides on `.dark`.
+
+```css
+/* app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #ffffff;
+  --fg: #0f172a; /* slate-900 */
+  --muted: #475569; /* slate-600 */
+  --primary: #2563eb; /* blue-600 */
+  --accent: #7c3aed;  /* violet-600 */
+  --success: #16a34a; /* green-600 */
+  --warning: #d97706; /* amber-600 */
+  --danger: #dc2626;  /* red-600 */
+  --border: #e2e8f0;  /* slate-200 */
+  --card: #ffffff;
+  --ring: var(--primary);
+}
+
+.dark {
+  --bg: #0b1220;
+  --fg: #e2e8f0; /* slate-200 */
+  --muted: #94a3b8; /* slate-400 */
+  --primary: #60a5fa; /* blue-400 */
+  --accent: #a78bfa;  /* violet-400 */
+  --success: #22c55e; /* green-500 */
+  --warning: #f59e0b; /* amber-500 */
+  --danger: #f87171;  /* red-400 */
+  --border: #1f2937;  /* gray-800 */
+  --card: #0f172a;    /* slate-900 */
+  --ring: var(--primary);
+}
+
+/* Base elements using tokens */
+html, body {
+  background-color: var(--bg);
+  color: var(--fg);
+}
+
+/* Prefer visible focus across modes */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+```
+
+3) Using tokens in components with Tailwind
+
+- With mapped colors in Tailwind: `bg-bg text-fg border-border` etc.
+- Or use arbitrary values directly: `bg-[--bg] text-[--fg] border-[--border] ring-[--ring]`.
+
+Examples:
+
+```html
+<header class="sticky top-0 z-40 bg-[--bg] border-b border-[--border]">
+  <div class="mx-auto max-w-screen-lg px-4 py-3 flex items-center justify-between">
+    <h1 class="text-lg font-semibold text-[--fg]">SEO Lab</h1>
+    <button class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 border border-[--border] text-[--fg] hover:bg-[--card] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[--ring]">Toggle Theme</button>
+  </div>
+    
+</header>
+```
+
+4) Dark/light mode toggle (simple, no provider required)
+
+- Strategy: add/remove `dark` class on `<html>`; persist to `localStorage('theme')` and respect `prefers-color-scheme` on first load.
+- Keep it decoupled so components don’t care about the mechanism.
+
+Pseudo-logic:
+
+```ts
+const key = 'seolab:theme';
+const system = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+const saved = (localStorage.getItem(key) as 'light' | 'dark' | null) ?? null;
+const next = saved ?? system;
+document.documentElement.classList.toggle('dark', next === 'dark');
+// on toggle: setItem(key, value) and toggle class
+```
+
+5) Mobile-first defaults
+
+- Build layouts mobile-first; use `max-w-screen-*` and `px-4`/`py-3` spacing.
+- Navigation is keyboard accessible; tap targets ≥ 44px; use `scroll-mt-*` to account for sticky headers.
+- Use `prose` from `@tailwindcss/typography` for Markdown content with token-driven colors (override via `.prose :where(*) { color: var(--fg) }`).
 ```
 
 Minimal storage interface (example):
@@ -282,7 +415,7 @@ Content style:
 ---
 
 ## Theme-Driven UI
-One theme file controls the entire look (e.g., `/theme/theme.ts` or `/theme/theme.json`).
+One theme file controls the entire look (e.g., `/theme/theme.ts` or `/theme/theme.json`). For implementation, use TailwindCSS plus CSS variables for colors and the `dark` class on `<html>` to switch modes globally; components should reference tokens only (no hard-coded hex values).
 
 Theme tokens:
 
@@ -299,16 +432,30 @@ Changing a token must update UI globally (no hard-coded styles in components).
 ---
 
 ## Reusable Components
-- AppShell (header, sidebar, content, breadcrumbs)
-- MarkdownPage (MD/MDX renderer with ToC, anchor links)
-- Callout (info/warning/success for tips and pitfalls)
-- Checklist (checkbox list; ties into local progress)
-- TableOfContents (from headings)
-- PrevNext (prev/next lesson links)
-- SearchInput (optional)
-- Badge, Tag, AnchorHeading, ProgressBar
+Chosen approach: TailwindCSS + a consistent component library for primitives (shadcn/ui on top of Radix), plus a tiny set of custom, domain-specific components.
 
-All components must be theme-aware, accessible (keyboard/ARIA), and reused across the app.
+Use the library for general UI primitives and keep your app logic in small custom components. Wrap third‑party primitives under `/components/ui/*` so you can swap vendors later without touching the app code.
+
+UI primitives (from library, placed in `/components/ui`):
+- Button, Card, Input, Textarea, Select, Checkbox, Radio
+- Dialog/Modal, Drawer/Sheet, DropdownMenu, Tooltip, Tabs
+- Toast/Snackbar, Progress (bar), Badge/Tag, Alert/Callout
+
+Domain components (custom in `/components`):
+- AppShell (header, sidebar, content, breadcrumbs, skip link)
+- MarkdownPage (MD/MDX renderer with ToC injection, anchor headings)
+- Checklist (binds to `useProgress`; auto-set `completed` when all checked)
+- TableOfContents (parse headings, active section, deep links)
+- PrevNext (computed from category + order)
+- ProgressBar (overall and per-category, can wrap library Progress)
+- ResetProgressModal (confirmation, focus-trap; can wrap library Dialog)
+- AnchorHeading (stable IDs, copy-link on hover)
+- SearchInput (optional, client-side filter)
+
+Theming and a11y:
+- Components must reference CSS variables (e.g., `bg-[--bg] text-[--fg]`) or mapped Tailwind color tokens (`bg-bg text-fg`). No hard-coded hex values.
+- Dark/light mode switches via `html.dark` and affects all primitives automatically.
+- Ensure a11y: keyboard focus states, ARIA roles/labels, and semantic landmarks.
 
 ---
 
@@ -479,3 +626,5 @@ SEO is what helps you compete to appear there when buyers are searching.
 - Local-only storage is used; no network calls for progress. A `ProgressStore` abstraction exists so storage can be swapped (e.g., IndexedDB or remote API) without changing UI.
 - Export/Import is available (optional): users can download/upload progress JSON with validation and version-aware migration.
 - App is accessible, fast, and semantically structured.
+ - UI is implemented with TailwindCSS, uses centralized CSS variables for theme tokens, supports a global dark/light toggle using the `dark` class, and is fully mobile-first/responsive.
+ - Component strategy is consistent: primitives from a single library (shadcn/ui + Radix) wrapped under `/components/ui`, and domain components custom-built under `/components`.
