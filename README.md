@@ -1,630 +1,140 @@
-# SEO Learn-By-Doing Playbook — Content Library + Local Progress Dashboard
+# SEO Lab — Streamlit Edition
 
-## Purpose
-Build a content-first Next.js app that renders a complete SEO learning library from Markdown/MDX files and includes a local-only dashboard to track reading and completion.
-
-- Content (Markdown) is the source of truth.
-- Progress is stored locally (e.g., `localStorage`) — no accounts.
+A lightweight, local-first Streamlit app that renders a comprehensive SEO curriculum from `content/**` using a visual-first approach, with a sidebar table of contents and progress tracking. No servers or external services required.
 
 ---
 
-## Core Principles
-- Markdown/MDX as content: all lessons live in `/content/...`.
-- Uniform lesson template: every topic uses the same teaching sections.
-- Local-only progress: completion and reading history saved per-browser.
-- Theme-driven UI: one theme file controls colors/typography/spacing.
-- Reusable components: single component set for all pages.
-- Reusable SEO utilities: app uses its own meta/schema/canonical helpers.
-- Accessible & fast: keyboard-first, semantic headings, strong CWV.
+## Repository structure
+
+- `content/` — Markdown lessons organized by SEO Playbook categories
+- `streamlit_app/` — Streamlit application
+  - `app.py` — main app (lesson rendering, sidebar ToC, navigation)
+  - `content_loader.py` — loads Markdown + frontmatter, extracts headings, builds index, prev/next
+  - `components.py` — UI helpers (callouts, ToC, checklist, style injection)
+  - `state.py` — local JSON progress store with export/import/reset
+  - `pages/1_Dashboard.py` — dashboard page (overall and per-category progress)
+  - `.streamlit/config.toml` — Streamlit theme
+  - `styles.css` — small CSS tweaks (anchors, code wrapping)
+- `CONTENT_PLAN.md` — Content structure following SEO Playbook categories
+- `BUILD_PLAN.md` — Implementation tracking and future enhancements
 
 ---
 
-## Local‑first, upgradable architecture (so others can use it too)
-The app is local-only by default, but the code should be structured so you can swap storage or ship a multi-user version without rewriting UI.
+## Quickstart (Windows PowerShell)
 
-- Separation of concerns
-  - Content is static under `/content/**` and compiled at build time.
-  - UI lives in reusable, theme-aware components.
-  - App logic (SEO utils, content indexing, progress) lives in `/lib/**` with narrow, testable APIs.
-- Storage abstraction for progress
-  - Define a `ProgressStore` interface and inject it via context (`ProgressProvider`).
-  - Default driver uses `localStorage`; you can later swap an IndexedDB or remote API driver with the same interface.
-  - Namespaced key (e.g., `seolab:progress:v{version}`) and a simple migration pipeline (`version` already in the schema).
-- Export/Import (optional but recommended)
-  - Allow users to export their progress as JSON and import it back (with validation and version migration).
-  - Keeps data portable across devices without requiring accounts.
-- App configuration
-  - Centralize in `/config/app.ts` (or JSON): `baseUrl`, `siteName`, `defaultAuthor`, `features` (search, streaks, exportImport, pwa), `theme` preset.
-  - No secrets required for the base app; remote/sync variants can read env vars separately.
-- Distribution options
-  - Static export is viable (`next export`) because content is local and prebuilt.
-  - Optional PWA (e.g., next-pwa) for offline reading and installability.
-  - A remote-enabled variant can swap only the progress driver + add an API route.
-
-Suggested project layout:
-```
-/app
-  /dashboard
-  /[...slug]/page.tsx     # renders MarkdownPage by content slug
-/app/globals.css          # Tailwind base + theme tokens (CSS variables)
-/components               # AppShell, MarkdownPage, ToC, Checklist, PrevNext, etc.
-/content                  # the Markdown library (source of truth)
-/lib
-  /content                # content indexing, frontmatter types, slug helpers
-  /progress               # ProgressProvider, useProgress, stats helpers
-  /storage                # ProgressStore interface + drivers (localStorage default)
-  /seo                    # buildMeta, schema, canonical, slugify, joinUrl
-/theme                    # tokens and global styles
-/config                   # app.ts with site metadata + feature flags
-tailwind.config.ts        # Tailwind setup (darkMode: 'class', content globs, plugins)
-postcss.config.js         # PostCSS setup
+```powershell
+# From the repo root
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r streamlit_app\requirements.txt
+streamlit run streamlit_app\app.py
 ```
 
-### TailwindCSS UI and theming (simple, mobile, dark/light)
-Use Tailwind for rapid, consistent UI. Keep theming centralized with CSS variables so switching light/dark is trivial and components never hardcode colors.
+Then open the browser (Streamlit defaults to http://localhost:8501). Use the sidebar to select lessons. The “Pages” selector in the sidebar also links to the Dashboard.
 
-1) Tailwind config (key points)
-
-```ts
-// tailwind.config.ts
-import type { Config } from 'tailwindcss'
-
-export default {
-  darkMode: 'class',
-  content: [
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './content/**/*.{md,mdx}',
-  ],
-  theme: {
-    extend: {
-      // Use CSS variables at runtime; you can also add sizing/spacing scale here
-      colors: {
-        // Optional named tokens if you prefer theme('colors.bg') usage
-        bg: 'var(--bg)',
-        fg: 'var(--fg)',
-        muted: 'var(--muted)',
-        primary: 'var(--primary)',
-        accent: 'var(--accent)',
-        success: 'var(--success)',
-        warning: 'var(--warning)',
-        danger: 'var(--danger)',
-        border: 'var(--border)',
-        card: 'var(--card)',
-        ring: 'var(--ring)',
-      },
-    },
-  },
-  plugins: [require('@tailwindcss/typography'), require('@tailwindcss/forms')],
-} satisfies Config
-```
-
-2) Centralized theme tokens with CSS variables
-
-Put tokens in `app/globals.css` (or `/theme/tokens.css` and import it). Light mode on `:root`, dark overrides on `.dark`.
-
-```css
-/* app/globals.css */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  --bg: #ffffff;
-  --fg: #0f172a; /* slate-900 */
-  --muted: #475569; /* slate-600 */
-  --primary: #2563eb; /* blue-600 */
-  --accent: #7c3aed;  /* violet-600 */
-  --success: #16a34a; /* green-600 */
-  --warning: #d97706; /* amber-600 */
-  --danger: #dc2626;  /* red-600 */
-  --border: #e2e8f0;  /* slate-200 */
-  --card: #ffffff;
-  --ring: var(--primary);
-}
-
-.dark {
-  --bg: #0b1220;
-  --fg: #e2e8f0; /* slate-200 */
-  --muted: #94a3b8; /* slate-400 */
-  --primary: #60a5fa; /* blue-400 */
-  --accent: #a78bfa;  /* violet-400 */
-  --success: #22c55e; /* green-500 */
-  --warning: #f59e0b; /* amber-500 */
-  --danger: #f87171;  /* red-400 */
-  --border: #1f2937;  /* gray-800 */
-  --card: #0f172a;    /* slate-900 */
-  --ring: var(--primary);
-}
-
-/* Base elements using tokens */
-html, body {
-  background-color: var(--bg);
-  color: var(--fg);
-}
-
-/* Prefer visible focus across modes */
-:where(a, button, input, select, textarea):focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-```
-
-3) Using tokens in components with Tailwind
-
-- With mapped colors in Tailwind: `bg-bg text-fg border-border` etc.
-- Or use arbitrary values directly: `bg-[--bg] text-[--fg] border-[--border] ring-[--ring]`.
-
-Examples:
-
-```html
-<header class="sticky top-0 z-40 bg-[--bg] border-b border-[--border]">
-  <div class="mx-auto max-w-screen-lg px-4 py-3 flex items-center justify-between">
-    <h1 class="text-lg font-semibold text-[--fg]">SEO Lab</h1>
-    <button class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 border border-[--border] text-[--fg] hover:bg-[--card] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[--ring]">Toggle Theme</button>
-  </div>
-    
-</header>
-```
-
-4) Dark/light mode toggle (simple, no provider required)
-
-- Strategy: add/remove `dark` class on `<html>`; persist to `localStorage('theme')` and respect `prefers-color-scheme` on first load.
-- Keep it decoupled so components don’t care about the mechanism.
-
-Pseudo-logic:
-
-```ts
-const key = 'seolab:theme';
-const system = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-const saved = (localStorage.getItem(key) as 'light' | 'dark' | null) ?? null;
-const next = saved ?? system;
-document.documentElement.classList.toggle('dark', next === 'dark');
-// on toggle: setItem(key, value) and toggle class
-```
-
-5) Mobile-first defaults
-
-- Build layouts mobile-first; use `max-w-screen-*` and `px-4`/`py-3` spacing.
-- Navigation is keyboard accessible; tap targets ≥ 44px; use `scroll-mt-*` to account for sticky headers.
-- Use `prose` from `@tailwindcss/typography` for Markdown content with token-driven colors (override via `.prose :where(*) { color: var(--fg) }`).
-```
-
-Minimal storage interface (example):
-
-```ts
-export type Checklist = {
-  understandWhy?: boolean;
-  applyManually?: boolean;
-  knowGood?: boolean;
-};
-
-export type LessonProgress = {
-  completed?: boolean;
-  checkedAt?: string; // ISO
-  readingTime?: number;
-  lastReadAt?: string; // ISO
-  checklist?: Checklist;
-};
-
-export type ProgressState = {
-  version: number;
-  lessons: Record<string, LessonProgress>; // key = slug
-};
-
-export interface ProgressStore {
-  load(): ProgressState;
-  save(next: ProgressState): void;
-  reset(): void;
-}
-```
-
-Default driver: `LocalStorageProgressStore` using a namespaced key like `seolab:progress:v1`. Future drivers can implement the same `ProgressStore` for IndexedDB or a remote API.
-
-## Content Source (Markdown Library)
-- All lessons live in the repo under `/content/{category}/{slug}.md`.
-- Built at compile time; no runtime fetching or DB.
-
-### Directory Structure
-```
-/content
-  /foundations
-    what-is-seo.md
-    how-search-engines-work.md
-    ranking-systems.md
-    serp-anatomy.md
-    types-of-seo.md
-    core-kpis.md
-  /keyword-research
-    seed-keywords.md
-    keyword-expansion.md
-    search-volume.md
-    keyword-difficulty.md
-    search-intent.md
-    long-tail-keywords.md
-    keyword-clustering.md
-    opportunity-scoring.md
-    mapping-to-content-types.md
-  /on-page
-    title-tags-and-meta-descriptions.md
-    headings-h1-h6.md
-    body-content-optimization.md
-    alt-text.md
-    internal-linking.md
-    url-structure.md
-    canonicals.md
-    schema-basics.md
-    content-depth-readability.md
-    user-experience-signals.md
-  /technical
-    crawling-indexation.md
-    robots-txt.md
-    meta-robots-canonicals.md
-    sitemaps-xml-html.md
-    site-architecture.md
-    core-web-vitals.md
-    page-speed-optimization.md
-    mobile-first-indexing.md
-    https-security.md
-    redirects.md
-    duplicate-content.md
-    log-file-analysis.md
-    international-seo-basics.md
-  /content-strategy
-    content-types.md
-    buyer-journey-mapping.md
-    content-briefs.md
-    topical-authority-eeat.md
-    semantic-seo.md
-    evergreen-vs-seasonal.md
-    repurposing-content.md
-    avoid-thin-duplicate.md
-  /off-page
-    backlinks.md
-    link-attributes.md
-    backlink-quality.md
-    link-building-strategies.md
-    local-citations.md
-    toxic-links-disavow.md
-    unlinked-mentions.md
-    authority-measurement.md
-  /local
-    google-business-profile.md
-    nap-consistency.md
-    local-citations-directories.md
-    local-keywords.md
-    reviews-reputation.md
-    local-link-building.md
-    local-pack-signals.md
-    sab-vs-location-businesses.md
-  /analytics
-    google-search-console.md
-    ga4.md
-    rank-tracking.md
-    dashboards-reporting.md
-    kpis-by-goal.md
-    ab-testing-seo.md
-    log-analysis.md
-  /competitive
-    identify-competitors.md
-    keyword-gap-analysis.md
-    content-benchmarking.md
-    serp-feature-analysis.md
-    backlink-profile-comparison.md
-    market-share-tracking.md
-  /advanced
-    semantic-search-nlp.md
-    entity-seo.md
-    programmatic-seo.md
-    edge-seo.md
-    automated-internal-linking.md
-    content-pruning.md
-    schema-optimization.md
-    seo-at-scale.md
-    voice-search.md
-    video-seo.md
-  /automation
-    crawlers.md
-    keyword-tools.md
-    analytics-tools.md
-    reporting-automation.md
-    seo-apis.md
-    automation-ideas.md
-```
+Tip: In VS Code, press F5 to run (launch config is set to Streamlit), or run the task "streamlit: run" from the Command Palette.
 
 ---
 
-## Required Frontmatter
-Each Markdown file must start with:
+## How it works
+
+- Content loading: Markdown files under `content/**` are parsed with YAML frontmatter. Headings (H2–H6) are extracted to build an on-page ToC, and anchor IDs are injected so links jump to sections.
+- Callouts: Lines like `> [!TIP] Use descriptive alt text` render as styled callout boxes. Supported: NOTE, TIP, INFO, WARNING, DANGER.
+- Checklist: Items under a `## Checklist` section using Markdown task-list syntax (`- [ ] ...`) are turned into checkboxes in the UI.
+- Progress: Saved locally to `streamlit_app/progress.json`. Export/import and reset are available from the sidebar.
+- Navigation: Sidebar lists categories and lessons (sorted by `order`). Prev/Next buttons appear at the end of each lesson. A Dashboard page summarizes progress.
+
+---
+
+## Authoring content
+
+Place lessons at `content/{category}/{slug}.md`.
+
+Frontmatter (minimal example):
 
 ```yaml
 ---
-title: "SEO Foundations — What is SEO?"
-category: "Foundations"
-slug: "foundations/what-is-seo"
-summary: "Practical introduction to Search Engine Optimization."
-readingTime: 5
-order: 1
-seo:
-  metaTitle: "What is SEO? | SEO Foundations"
-  metaDescription: "Understand SEO and its core pillars: on-page, technical, off-page."
-  canonical: "/foundations/what-is-seo"
-  schemaType: "Article"
+title: "What is SEO"
+description: "Introduction to search engine optimization fundamentals."
+category: "foundations"
+order: 1.1
 toc: true
-updatedAt: "2025-09-13"
+updated: "2025-09-13"
+canonical: "/foundations/what-is-seo" # optional
 ---
 ```
 
-Rules:
+Recommended content structure:
 
-- `category` must match the folder label shown in the sidebar.
-- `slug` must be unique and mirror its path.
-- `order` determines sort within the category.
-- `seo` feeds the SEO utilities; keep fields concise and valid.
-- `toc` toggles in-page table of contents.
+- Visual overview (diagrams, icons, tables)
+- Key concepts with clear headings
+- Step-by-step instructions with checkpoints
+- Real-world examples or case studies
+- Actionable checklist
+- Resources and further reading
 
----
-
-## Lesson Template (Mandatory)
-All Markdown topics must follow this exact structure and concise detail:
+Checklist section:
 
 ```markdown
-# {Category} — {Topic Title}
+## Checklist
 
-## Why This Matters
-2–4 sentences explaining the practical importance.
-
-## Definition / Explanation
-Plain-English description. Use bullets where helpful.
-
-## How to Do It (Manually)
-3–6 numbered steps a beginner can follow.
-
-## What Good Looks Like
-3–5 bullets indicating correct application.
-
-## Pitfalls
-3–5 common mistakes to avoid.
-
-## Example
-One realistic example showing the concept in action.
-
-## Action
-A short exercise (1–3 steps) to apply the learning.
-
-## Mark Complete
-- [ ] I understand why this matters
-- [ ] I can apply it manually
-- [ ] I know what good looks like
+- [ ] Titles are unique and front‑load key terms
+- [ ] One <h1>; clear h2/h3 structure
+- [ ] Images have meaningful alt text
 ```
 
-Content style:
+Callouts:
 
-- Short paragraphs, bullets, and bolded key terms for scannability.
-- Avoid walls of text; aim for clarity over depth where trade-offs exist.
-
----
-
-## Navigation & Information Architecture
-- Sidebar: Categories → Topics (ordered by `order`).
-- Breadcrumbs: Home / Category / Topic.
-- Prev/Next: At the end of each lesson, computed by category order.
-- On-page ToC: Generated from `##` headings when `toc: true`.
-- Search (optional): lightweight client-side filter by title/summary.
-
----
-
-## Theme-Driven UI
-One theme file controls the entire look (e.g., `/theme/theme.ts` or `/theme/theme.json`). For implementation, use TailwindCSS plus CSS variables for colors and the `dark` class on `<html>` to switch modes globally; components should reference tokens only (no hard-coded hex values).
-
-Theme tokens:
-
-- Colors: `bg`, `fg`, `muted`, `primary`, `accent`, `success`, `warning`, `danger`
-- Typography: families, sizes, line-heights, weights
-- Spacing: consistent scale (e.g., 4/8-based)
-- Radii, shadows, borders
-- Breakpoints, container widths
-
-Support light/dark and high-contrast modes from the same theme.
-
-Changing a token must update UI globally (no hard-coded styles in components).
-
----
-
-## Reusable Components
-Chosen approach: TailwindCSS + a consistent component library for primitives (shadcn/ui on top of Radix), plus a tiny set of custom, domain-specific components.
-
-Use the library for general UI primitives and keep your app logic in small custom components. Wrap third‑party primitives under `/components/ui/*` so you can swap vendors later without touching the app code.
-
-UI primitives (from library, placed in `/components/ui`):
-- Button, Card, Input, Textarea, Select, Checkbox, Radio
-- Dialog/Modal, Drawer/Sheet, DropdownMenu, Tooltip, Tabs
-- Toast/Snackbar, Progress (bar), Badge/Tag, Alert/Callout
-
-Domain components (custom in `/components`):
-- AppShell (header, sidebar, content, breadcrumbs, skip link)
-- MarkdownPage (MD/MDX renderer with ToC injection, anchor headings)
-- Checklist (binds to `useProgress`; auto-set `completed` when all checked)
-- TableOfContents (parse headings, active section, deep links)
-- PrevNext (computed from category + order)
-- ProgressBar (overall and per-category, can wrap library Progress)
-- ResetProgressModal (confirmation, focus-trap; can wrap library Dialog)
-- AnchorHeading (stable IDs, copy-link on hover)
-- SearchInput (optional, client-side filter)
-
-Theming and a11y:
-- Components must reference CSS variables (e.g., `bg-[--bg] text-[--fg]`) or mapped Tailwind color tokens (`bg-bg text-fg`). No hard-coded hex values.
-- Dark/light mode switches via `html.dark` and affects all primitives automatically.
-- Ensure a11y: keyboard focus states, ARIA roles/labels, and semantic landmarks.
-
----
-
-## Reusable SEO Utilities (Applied by the App)
-Centralize under `/lib/seo/`:
-
-- `buildMeta({ title, description, canonical, noindex? })`
-- `buildOg({ title, description, url, image })`
-- `buildTwitter({ title, description, image, card })`
-- `schema.article({ headline, datePublished, author, image })`
-- `schema.breadcrumb({ items })`
-- `schema.faq([{ question, answer }])`
-- `canonical(path)`
-- `robots({ index, follow })`
-- `slugify(title)`
-- `joinUrl(base, path)`
-- Heading ID generator (for ToC and deep links)
-
-Dogfooding: All library pages must use these utilities for their own meta, canonical, breadcrumb JSON-LD, etc.
-
----
-
-## Local Progress (Dashboard)
-Local-only progress stored per-browser (no accounts). Use `localStorage` (or IndexedDB) keyed by `slug`.
-
-### Progress Data Model (Client-Side)
-```json
-{
-  "version": 1,
-  "lessons": {
-    "foundations/what-is-seo": {
-      "completed": true,
-      "checkedAt": "2025-09-13T09:30:00Z",
-      "readingTime": 5,
-      "lastReadAt": "2025-09-13T09:28:00Z",
-      "checklist": {
-        "understandWhy": true,
-        "applyManually": true,
-        "knowGood": true
-      }
-    }
-  }
-}
+```markdown
+> [!INFO] A page can be crawlable but excluded from the index.
+> [!TIP] Prioritize on‑page fundamentals first.
+> [!WARNING] Don’t block critical pages in robots.txt.
 ```
 
-### Dashboard Requirements
-- Route: `/dashboard`
+Code blocks and tables use standard GitHub-flavored Markdown.
 
-Cards/sections:
-
-- Overall Progress: total lessons, completed, % complete, estimated time remaining (sum of `readingTime` of incomplete).
-- By Category: progress bars per category (e.g., Foundations 4/6, 67%).
-- Recently Viewed: last 5 lessons with “Resume” links.
-- Recommended Next: next incomplete lesson in the current category.
-- Streak (optional): simple local “days read in a row” count.
-- Export/Import (optional): buttons to download current progress JSON and to upload a JSON file to merge/replace state with validation and version migration.
-
-Interactions:
-
-- Mark lesson complete from the lesson page or dashboard.
-- Reset progress (with confirmation) — clears local storage.
- - Export progress (download JSON). Import progress (select JSON, validate, then merge/replace).
-
-Privacy:
-
-- All data local to the browser; no network or sync.
-- Notice on the dashboard: “Progress is stored locally on this device only.”
- - Exported files remain on the user’s device; no uploads by default.
-
-### Components for Progress
-- ProgressProvider (context for reading/writing local progress)
-- `useProgress(slug)` hook (get/set completion and checklist)
-- ProgressBar (linear bar for overall and per-category)
-- LessonList (category grouped list with completion state)
-- ResetProgressModal
-
-### Lesson Page → Progress Integration
-- Checklist section binds to `useProgress(slug)` to persist checkbox state.
-- When all three checkboxes are ticked, set `completed = true` and timestamp.
-- “Mark Complete” button toggles completion explicitly.
-- Update `lastReadAt` on route view.
-- Provide a “Back to Dashboard” CTA.
+Content style: prefer short paragraphs and bullets; bold key terms for scannability.
 
 ---
 
-## Accessibility & Performance
-- A11y: skip links, focus outlines, labelled controls, ARIA landmarks.
-- Semantics: one `h1` per lesson (from Markdown), `h2/h3` for sections.
-- Performance: prefetch next/prev lesson routes, lazy-load ToC on long pages.
-- Core Web Vitals: stable layout (no CLS), responsive interactions (INP), fast content paint (LCP).
-- SEO: titles/metas, canonical, breadcrumb JSON-LD, clean internal links.
+## Progress and dashboard
+
+- Storage: `streamlit_app/progress.json` (created on first run)
+- Export/Import: Use the sidebar popover in the main app to download/upload JSON
+- Reset: Clears all local progress (also available in the sidebar popover)
+- Dashboard: Overall completion and per-category progress (see "Pages" → Dashboard)
+
+Privacy: Everything is local—no accounts, no network calls.
 
 ---
 
-## Example Lesson Skeleton (with Frontmatter)
-```yaml
----
-title: "SEO Foundations — What is SEO?"
-category: "Foundations"
-slug: "foundations/what-is-seo"
-summary: "Understand SEO and its core pillars: on-page, technical, off-page."
-readingTime: 5
-order: 1
-seo:
-  metaTitle: "What is SEO? | SEO Foundations"
-  metaDescription: "Plain-English intro to Search Engine Optimization and how it drives organic traffic."
-  canonical: "/foundations/what-is-seo"
-  schemaType: "Article"
-toc: true
-updatedAt: "2025-09-13"
----
-```
+## Theming and styling
 
-# SEO Foundations — What is SEO?
-
-## Why This Matters
-SEO is how websites become visible in Google and other search engines.
-Without it, even a great site won’t attract visitors at the right moment of intent.
-
-## Definition / Explanation
-- **SEO = Search Engine Optimization** — making your site easier to **find**, **understand**, and **trust** in search results.
-- The goal is to increase **relevant, organic traffic** (not paid ads).
-- Core areas:
-  1. **On-Page SEO** (content, HTML, structure)
-  2. **Technical SEO** (speed, crawlability, mobile-friendliness)
-  3. **Off-Page SEO** (backlinks, authority, brand signals)
-
-## How to Do It (Manually)
-1. Search 3–5 keywords that matter to your business.
-2. Review the top results: content depth, page type, freshness, authority.
-3. Compare your page: does it match intent? is it readable? can Google access it?
-
-## What Good Looks Like
-- You appear for relevant queries.
-- Pages are clear, structured, and easy to navigate.
-- Important content is crawlable and indexable.
-- Other sites naturally link to your content.
-
-## Pitfalls
-- Treating SEO as “just keywords.”
-- Ignoring speed and mobile basics.
-- Expecting instant results.
-- Writing for bots, not people.
-
-## Example
-Keyword: **“landlord furniture packs”** — page 1 shows service providers and buying guides.
-SEO is what helps you compete to appear there when buyers are searching.
-
-## Action
-1. Write your one-sentence definition of SEO.
-2. Google 3 target keywords.
-3. Note the page types that rank (service, blog, local maps).
-
-## Mark Complete
-- [ ] I understand why this matters
-- [ ] I can apply it manually
-- [ ] I know what good looks like
+- Streamlit theme: `streamlit_app/.streamlit/config.toml` (colors, fonts)
+- App CSS tweaks: `streamlit_app/styles.css` (anchors, code wrapping, small utilities)
+- Callouts/ToC classes are injected by `components.inject_styles()`
 
 ---
 
-## Definition of Done
-- All curriculum topics exist as Markdown files with valid frontmatter.
-- Each lesson follows the mandatory template and consistent detail level.
-- Sidebar, breadcrumbs, prev/next, and ToC are generated from content metadata.
-- A single theme file controls styles across all components.
-- SEO utilities are applied to all library pages (titles, metas, JSON-LD, canonical).
-- Dashboard exists, showing overall and per-category local progress, recent items, recommended next, and reset progress.
-- Local-only storage is used; no network calls for progress. A `ProgressStore` abstraction exists so storage can be swapped (e.g., IndexedDB or remote API) without changing UI.
-- Export/Import is available (optional): users can download/upload progress JSON with validation and version-aware migration.
-- App is accessible, fast, and semantically structured.
- - UI is implemented with TailwindCSS, uses centralized CSS variables for theme tokens, supports a global dark/light toggle using the `dark` class, and is fully mobile-first/responsive.
- - Component strategy is consistent: primitives from a single library (shadcn/ui + Radix) wrapped under `/components/ui`, and domain components custom-built under `/components`.
+## CI
+
+GitHub Actions runs a minimal check to install Python dependencies and validate that the content loader can index lessons without errors.
+
+---
+
+## Troubleshooting
+
+- `ModuleNotFoundError: frontmatter`: Ensure dependencies were installed:
+  - `pip install -r streamlit_app/requirements.txt`
+- App doesn’t see lessons: Confirm files live under `content/**` and have valid frontmatter.
+- ToC links don’t jump: Headings must be H2 or deeper (`##` or more).
+- Progress not saving: Check write permissions to `streamlit_app/progress.json`; delete it if corrupt.
+- Change the port: `streamlit run streamlit_app/app.py --server.port 8502`
+
+---
+
+## Contributing
+
+- Keep lessons small and actionable; follow the authoring guide above.
+- Keep the app local-first and privacy-friendly—no external services by default.
+- CI should remain fast and deterministic.

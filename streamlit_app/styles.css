@@ -1,0 +1,5 @@
+/* Extra tweaks for Streamlit rendering */
+html, body { scroll-behavior: smooth; }
+.block-container { padding-top: 1.5rem; }
+.prose h2, h2 { scroll-margin-top: 80px; }
+pre code { white-space: pre-wrap; }

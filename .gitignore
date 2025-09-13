@@ -3,12 +3,11 @@ node_modules/
 
 # Next.js
 .next/
-out/
-
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+__pycache__/
+.venv/
+*.log
+*.pyc
+streamlit_app/progress.json
 pnpm-debug.log*
 
 # Env
