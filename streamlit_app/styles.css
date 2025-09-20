@@ -3,3 +3,25 @@ html, body { scroll-behavior: smooth; }
 .block-container { padding-top: 1.5rem; }
 .prose h2, h2 { scroll-margin-top: 80px; }
 pre code { white-space: pre-wrap; }
+
+/* Subtle transitions for interactive components */
+.callout, .preset-tip { transition: background-color .2s ease, border-color .2s ease; }
+.group-title { border-bottom: 1px dashed rgba(0,0,0,.1); padding-bottom: .1rem; margin-bottom: .25rem; }
+
+/* Focus styles for keyboard navigation */
+:focus { outline: 2px solid #6366f1; outline-offset: 2px; }
+
+/* Section notes styling */
+.section-notes { 
+  margin: 1rem 0 2rem; 
+  padding-left: 1rem;
+  border-left: 3px solid #f0f0f0;
+}
+
+/* Section separator */
+.section-separator { 
+  margin: 2rem 0; 
+  border: 0; 
+  height: 1px; 
+  background-color: rgba(49, 51, 63, 0.1); 
+}

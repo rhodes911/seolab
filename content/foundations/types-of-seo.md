@@ -6,6 +6,18 @@ order: 1.5
 toc: true
 updated: "2025-09-13"
 canonical: "/foundations/types-of-seo"
+quizzes:
+  - id: types-quiz-1
+    question: Which pairing correctly matches the SEO type to its focus?
+    type: single
+    options:
+      - text: Technical SEO → Backlinks
+        correct: false
+      - text: On-page SEO → Content quality & structure
+        correct: true
+        explain: On-page work focuses on content, metadata, and internal links.
+      - text: Off-page SEO → Schema markup
+        correct: false
 ---
 
 # 🔄 Types of SEO

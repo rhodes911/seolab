@@ -15,6 +15,10 @@ A streamlined Streamlit app that renders the SEO lesson library from Markdown an
 - Sidebar Table of Contents and search
 - Per-lesson checklist stored locally (JSON)
 - Export/Import progress
+- Interactive add-ons via frontmatter:
+   - Context presets (segmented control)
+   - Enhanced checklist (groups, rationale, preset filtering)
+   - Decision tree navigator
 
 ## Project layout
 ```

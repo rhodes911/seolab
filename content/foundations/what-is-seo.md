@@ -6,11 +6,29 @@ order: 1.1
 toc: true
 updated: "2025-09-13"
 canonical: "/foundations/what-is-seo"
+meta_preview: true
+case_study: true
+quizzes:
+  - id: seo-basics-1
+    question: Which statement best describes SEO?
+    type: single
+    options:
+      - text: A one-time website setup
+        correct: false
+        explain: SEO is ongoing; algorithms and competition change.
+      - text: Practices to improve visibility and traffic from search
+        correct: true
+        explain: SEO combines technical, content, and authority work.
+      - text: Only about backlinks
+        correct: false
+        explain: Links matter, but on-page and technical factors are critical too.
 ---
 
 # 🔍 What is SEO?
 
 > 📌 **TL;DR:** SEO is how you make your website visible in search results. It combines technical setup, quality content, and external validation to help search engines find, understand, and recommend your pages.
+
+> [!TIP] Quick focus by context: {{preset:local|Start with GBP + reviews}} {{preset:ecommerce|Start with PDP schema + navigation}} {{preset:default|Start with titles, headings, and internal links}}
 
 ## 🏆 Why SEO Matters
 

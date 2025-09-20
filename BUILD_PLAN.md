@@ -21,6 +21,10 @@ This plan tracks the Streamlit implementation of the SEO Learn‑By‑Doing app.
 - [x] Sidebar ToC for current lesson
 - [x] Callouts mapping: > [!TIP] / [!INFO] / [!WARNING] / [!DANGER]
 - [x] Basic CSS injection for layout and readability
+	- Delivered reusable components:
+		- Enhanced checklist (groups, rationale, progress)
+		- Scenario presets (context toggle with tips)
+		- Decision tree navigator (guided flows)
 
 ## 4) Progress
 - [x] Local JSON store for completion + per‑lesson checklist
@@ -52,5 +56,5 @@ This plan tracks the Streamlit implementation of the SEO Learn‑By‑Doing app.
 - [ ] Optional search/filter
 - [ ] Syntax highlighting for code blocks
 - [ ] Unit tests for parsing helpers
-- [ ] Additional interactive elements
+- [x] Additional interactive elements
 - [ ] Export progress as completion certificate

@@ -97,6 +97,136 @@ Content style: prefer short paragraphs and bullets; bold key terms for scannabil
 
 ---
 
+## Interactive features via frontmatter
+
+You can make any lesson interactive using simple YAML frontmatter. The app automatically picks these up and renders the right UI.
+
+### Scenario presets (context toggle)
+
+Let readers select a context (e.g., Local, Ecommerce, SaaS) and optionally show a tip per context.
+
+```yaml
+presets:
+  default: general
+  options:
+    - key: general
+      label: General
+    - key: local
+      label: Local
+    - key: ecommerce
+      label: Ecommerce
+  tips:
+    local: "Emphasize proximity, reviews, and GBP."
+    ecommerce: "Focus on product schema and faceted navigation."
+```
+
+### Enhanced checklist (grouped items, reasons, filtering)
+
+Define a rich checklist as a list of strings or objects. Objects can include:
+
+- text: the checklist text (required)
+- why: short rationale shown below the item (optional)
+- group: label to group adjacent items (optional)
+- only / preset: show this item only for one or more presets (optional)
+
+```yaml
+checklist:
+  - group: On-page basics
+    text: "One <h1> and logical H2/H3 structure"
+    why: "Clear hierarchy helps crawlers and snippets"
+  - text: "Title starts with primary intent term"
+    why: "Front-loading improves CTR and relevance"
+    only: [general, ecommerce]
+  - text: "GBP category and NAP consistent"
+    preset: local
+```
+
+If `checklist` is present in frontmatter, it is preferred over the Markdown `## Checklist` section. Both can coexist; frontmatter wins.
+
+### Decision tree navigator (guided flow)
+
+Add a simple planner/diagnostic as a declarative decision tree.
+
+```yaml
+decision_tree:
+  title: "SERP Optimization Planner"
+  start: q1
+  nodes:
+    - id: q1
+      type: question
+      text: "Is there a featured snippet on your target query?"
+      options:
+        - label: "Yes"
+          next: q2
+        - label: "No"
+          next: o1
+    - id: q2
+      type: question
+      text: "Does your page provide a concise 40–60 word answer?"
+      options:
+        - label: "Yes"
+          next: o2
+        - label: "No"
+          next: o3
+    - id: o1
+      type: outcome
+      title: "Target rich results first"
+      description: "Implement appropriate schema to unlock visibility, then revisit snippets."
+    - id: o2
+      type: outcome
+      title: "Improve formatting"
+      description: "Use H2/H3 with question phrasing and list/table structures as needed."
+    - id: o3
+      type: outcome
+      title: "Author a snippet-ready answer"
+      description: "Add a direct, <60-word answer near the top of the section."
+```
+
+All interactive features are local-only and require no external services.
+
+### Inline variant tokens
+
+Swap specific words/phrases based on the selected preset directly in Markdown or checklist text:
+
+```md
+Target {{preset:local|GBP}} {{preset:ecommerce|Product schema}} opportunities.
+Fallback text can use {{preset:default|General guidance}}.
+```
+
+Rules:
+- When preset matches the key, the token shows; otherwise it’s removed.
+- default shows only when no preset is selected.
+
+### Quizzes (frontmatter)
+
+Add quick knowledge checks at the end of a lesson:
+
+```yaml
+quizzes:
+  - id: basics-1
+    question: Which elements matter most for standard organic results?
+    type: single # single | multi | tf
+    options:
+      - text: Title & description only
+        correct: false
+        explain: Structure & content depth matter too
+      - text: Title, description, content structure, internal links
+        correct: true
+        explain: Combined on-page signals strengthen relevance
+```
+
+### Meta preview (frontmatter)
+
+Enable a simple SERP snippet preview box:
+
+```yaml
+meta_preview: true
+```
+
+Learners can type Title/URL/Description and see a preview with character counts. Saved locally.
+
+---
+
 ## Progress and dashboard
 
 - Storage: `streamlit_app/progress.json` (created on first run)

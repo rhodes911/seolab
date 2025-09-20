@@ -6,6 +6,83 @@ order: 1.4
 toc: true
 updated: "2025-09-13"
 canonical: "/foundations/serp-anatomy"
+presets:
+  default: general
+  options:
+    - key: general
+      label: General
+    - key: local
+      label: Local
+    - key: ecommerce
+      label: Ecommerce
+  tips:
+    general: "Optimize titles/descriptions for CTR; structure content for snippets."
+    local: "Prioritize GBP, reviews, and local pack eligibility."
+    ecommerce: "Focus on product schema and inventory freshness."
+checklist:
+  - group: Standard result
+    text: "Title leads with the primary intent term"
+    why: "Front-loading increases relevance and CTR"
+  - text: "One <h1> and clear H2/H3 structure"
+    why: "Supports snippet extraction and scannability"
+  - group: Rich results
+    text: "Appropriate schema implemented (e.g., Product/Recipe/FAQ)"
+    why: "Enables rich results and eligibility"
+  - text: "Validate in Rich Results Test"
+    why: "Catches errors before shipping"
+  - group: Local specifics
+    text: "GBP category, NAP consistency, and reviews strategy"
+    preset: local
+  - group: Ecommerce specifics
+    text: "Product detail pages have complete Product schema"
+    preset: ecommerce
+decision_tree:
+  title: "SERP Optimization Planner"
+  start: q1
+  nodes:
+    - id: q1
+      type: question
+      text: "Does the SERP show a featured snippet?"
+      options:
+        - label: "Yes"
+          next: q2
+        - label: "No"
+          next: o1
+    - id: q2
+      type: question
+      text: "Does your page include a succinct 40–60 word answer?"
+      options:
+        - label: "Yes"
+          next: o2
+        - label: "No"
+          next: o3
+    - id: o1
+      type: outcome
+      title: "Target other SERP features"
+      description: "Prioritize rich results (schema), PAA coverage, and sitelinks."
+    - id: o2
+      type: outcome
+      title: "Improve formatting for snippet"
+      description: "Use question-style headings and tight paragraphs/lists near the top."
+    - id: o3
+      type: outcome
+      title: "Author a snippet-ready answer"
+      description: "Add a direct definition or steps block under the relevant H2/H3."
+meta_preview: true
+quizzes:
+  - id: serp-quiz-1
+    question: Which of these is most associated with earning a featured snippet?
+    type: single
+    options:
+      - text: Having many backlinks
+        correct: false
+        explain: Links help rankings, but snippet eligibility is about answering clearly.
+      - text: Providing a concise, well-structured answer near a relevant heading
+        correct: true
+        explain: Clear formatting (paragraph/list/table) near H2/H3 boosts snippet chances.
+      - text: Using only images instead of text
+        correct: false
+        explain: Google prefers text for snippet extraction.
 ---
 
 # 🔍 SERP Anatomy

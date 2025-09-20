@@ -10,6 +10,9 @@ DEFAULT_STATE = {
     "version": 1,
     "completed": {},   # slug -> bool
     "checklist": {},   # slug -> { item -> bool }
+    "quizzes": {},     # slug -> { quiz_id -> { selected, correct, total } }
+    "notes": {},       # slug -> { heading_id -> text }
+    "meta": {},        # slug -> { title, url, description }
 }
 
 def _ensure_file():
@@ -48,6 +51,55 @@ def set_checklist(slug: str, items: List[str], values: List[bool]):
     data.setdefault("checklist", {})[slug] = {item: bool(val) for item, val in zip(items, values)}
     all_checked = all(values) if items else False
     data.setdefault("completed", {})[slug] = all_checked
+    save_state(data)
+
+def get_quiz_state(slug: str) -> Dict[str, Any]:
+    data = get_progress()
+    return data.setdefault("quizzes", {}).setdefault(slug, {})
+
+def set_quiz_result(slug: str, quiz_id: str, selected: Any, correct: int, total: int):
+    data = get_progress()
+    q = data.setdefault("quizzes", {}).setdefault(slug, {})
+    q[quiz_id] = {"selected": selected, "correct": int(correct), "total": int(total)}
+    save_state(data)
+
+def get_notes(slug: str) -> Dict[str, str]:
+    data = get_progress()
+    return data.setdefault("notes", {}).setdefault(slug, {})
+
+def set_note(slug: str, heading_id: str, text: str):
+    data = get_progress()
+    n = data.setdefault("notes", {}).setdefault(slug, {})
+    n[heading_id] = text
+    save_state(data)
+
+def get_meta(slug: str) -> Dict[str, Any]:
+    data = get_progress()
+    return data.setdefault("meta", {}).setdefault(slug, {})
+
+def set_meta(slug: str, meta: Dict[str, Any]):
+    data = get_progress()
+    data.setdefault("meta", {})[slug] = meta
+    save_state(data)
+
+# Case Studies Management
+def get_case_studies(slug: str = None) -> Dict[str, Any]:
+    """
+    Get all case studies or just those for a specific lesson
+    """
+    data = get_progress()
+    case_studies = data.setdefault("case_studies", {})
+    if slug is not None:
+        return case_studies.setdefault(slug, {})
+    return case_studies
+
+def save_case_study(slug: str, case_study_id: str, case_study_data: Dict[str, Any]):
+    """
+    Save a case study for a specific lesson
+    """
+    data = get_progress()
+    cs = data.setdefault("case_studies", {}).setdefault(slug, {})
+    cs[case_study_id] = case_study_data
     save_state(data)
 
 def export_json() -> str:
