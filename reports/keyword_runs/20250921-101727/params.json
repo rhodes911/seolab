@@ -1,0 +1,21 @@
+{
+  "seeds": [
+    "seo audit",
+    "local seo",
+    "keyword research"
+  ],
+  "prefix_mods": [
+    "best",
+    "affordable",
+    "enterprise"
+  ],
+  "suffix_mods": [
+    "guide",
+    "checklist",
+    "near me",
+    "pricing"
+  ],
+  "jaccard_threshold": 0.5,
+  "max_per_seed": 200,
+  "max_keywords": 1000
+}

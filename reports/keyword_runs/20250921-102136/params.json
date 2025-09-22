@@ -1,0 +1,29 @@
+{
+  "seeds": [
+    "marketing strategy for small business",
+    "how to create a marketing plan",
+    "small business marketing tips",
+    "digital marketing strategy guide",
+    "marketing consultant advice",
+    "marketing strategy framework",
+    "audience research methods",
+    "channel mix planning",
+    "track marketing ROI"
+  ],
+  "prefix_mods": [
+    "best",
+    "simple",
+    "step by step",
+    "ultimate"
+  ],
+  "suffix_mods": [
+    "template",
+    "example",
+    "pdf",
+    "uk",
+    "2025"
+  ],
+  "jaccard_threshold": 0.5,
+  "max_per_seed": 200,
+  "max_keywords": 1000
+}

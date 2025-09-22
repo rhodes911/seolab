@@ -1,0 +1,28 @@
+{
+  "seeds": [
+    "seo services",
+    "local seo",
+    "technical seo",
+    "keyword research",
+    "content optimization",
+    "link building",
+    "seo audit",
+    "seo consulting",
+    "seo agency",
+    "small business seo"
+  ],
+  "prefix_mods": [
+    "best",
+    "affordable",
+    "enterprise",
+    "local"
+  ],
+  "suffix_mods": [
+    "surrey",
+    "camberley",
+    "mytchett"
+  ],
+  "jaccard_threshold": 0.5,
+  "max_per_seed": 20,
+  "max_keywords": 500
+}
