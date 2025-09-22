@@ -552,6 +552,7 @@ if run_btn:
     related_source_by_keyword: dict[str, str] = {}
     with st.status("Running SERP…", expanded=True) as status:
         raw_serper_by_keyword: dict[str, dict] = {}
+        organic_results_by_keyword: dict[str, list[dict]] = {}
         for q in rows:
             st.write(f"Query: {q}")
             try:
@@ -618,6 +619,19 @@ if run_btn:
                         st.caption(f"PAA fetch failed for '{q}': {e}")
                         paa_list = []
                         paa_source = "error"
+                # Build structured results with explicit rank
+                structured_results = [
+                    {
+                        "rank": i + 1,
+                        "title": res.title,
+                        "link": res.link,
+                        "snippet": res.snippet,
+                    }
+                    for i, res in enumerate(results)
+                ]
+                # Stash for saving later
+                organic_results_by_keyword[q] = structured_results
+
                 row = {
                     "keyword": q,
                     "difficulty": metrics.get("difficulty"),
@@ -625,7 +639,8 @@ if run_btn:
                     "unique_domains": metrics.get("unique_domains"),
                     "gov_edu": metrics.get("gov_edu"),
                     "aggregators": metrics.get("aggregators"),
-                    "results": [res.__dict__ for res in results],
+                    # Include explicit rank on each result for clearer display in Tina
+                    "results": structured_results,
                     "outlines": page_outlines,
                     "paa": paa_list,
                 }
@@ -699,6 +714,9 @@ if run_btn:
         # Stash raw serper JSON in session for later display
         if show_raw_serper and raw_serper_by_keyword:
             st.session_state["raw_serper_by_keyword"] = raw_serper_by_keyword
+        # Stash organic results per keyword for save flow
+        if organic_results_by_keyword:
+            st.session_state["organic_results_by_keyword"] = organic_results_by_keyword
 
 # ========== Analysis Summary Display ==========
 # Check if we should show analysis results (either just completed or from session state)
@@ -869,6 +887,7 @@ if st.session_state.get("show_analysis_results") and (
                 "easy_keywords": easy_keywords,
                 "moderate_keywords": moderate_keywords,
                 "hard_keywords": hard_keywords,
+                "organic_results_by_keyword": organic_results_by_keyword if 'organic_results_by_keyword' in locals() else st.session_state.get("organic_results_by_keyword", {}),
                 "paa_by_keyword": paa_by_keyword if 'paa_by_keyword' in locals() and paa_by_keyword else existing_paa_by_kw,
                 "paa_source_by_keyword": paa_source_by_keyword if 'paa_source_by_keyword' in locals() and paa_source_by_keyword else {},
                 "paa_aggregated": aggregated_paa if 'aggregated_paa' in locals() else existing_paa_agg,
@@ -1076,13 +1095,137 @@ if st.session_state.get("show_analysis_results") and (
                     debug_container.success(f"✅ Step 7: Generated report ID: {report_id}")
                     
                     # Create new report object
-                    # Include PAA in report if available
+                    # Include PAA/Related in report if available
                     report_paa_by_kw = st.session_state.get("last_analysis_data", {}).get("paa_by_keyword", {})
                     report_paa_agg = st.session_state.get("last_analysis_data", {}).get("paa_aggregated", [])
                     report_paa_src_by_kw = st.session_state.get("last_analysis_data", {}).get("paa_source_by_keyword", {})
                     report_rel_by_kw = st.session_state.get("last_analysis_data", {}).get("related_by_keyword", {})
                     report_rel_agg = st.session_state.get("last_analysis_data", {}).get("related_aggregated", [])
                     report_rel_src_by_kw = st.session_state.get("last_analysis_data", {}).get("related_source_by_keyword", {})
+                    # Organic results per keyword from current analysis_rows if available
+                    organic_by_kw_list = []
+                    # Prefer current analysis_rows
+                    if 'analysis_rows' in locals() and analysis_rows:
+                        for row in analysis_rows:
+                            res_list = row.get("results", []) or []
+                            normalized_results = []
+                            for idx, r in enumerate(res_list):
+                                if isinstance(r, dict):
+                                    nr = {**r}
+                                    nr.setdefault("rank", idx + 1)
+                                    normalized_results.append(nr)
+                                else:
+                                    try:
+                                        normalized_results.append({
+                                            "rank": idx + 1,
+                                            "title": getattr(r, "title", ""),
+                                            "link": getattr(r, "link", ""),
+                                            "snippet": getattr(r, "snippet", ""),
+                                        })
+                                    except Exception:
+                                        continue
+                            organic_by_kw_list.append({
+                                "keyword": row.get("keyword"),
+                                "results": normalized_results,
+                            })
+                    else:
+                        # Fallback to session-stashed organic results keyed by keyword
+                        sess_org = st.session_state.get("organic_results_by_keyword", {}) or st.session_state.get("last_analysis_data", {}).get("organic_results_by_keyword", {})
+                        for kw, res_list in (sess_org or {}).items():
+                            # Ensure rank present and sorted by rank
+                            normalized = []
+                            for idx, r in enumerate(res_list or []):
+                                nr = dict(r) if isinstance(r, dict) else {}
+                                nr.setdefault("rank", (idx + 1))
+                                normalized.append(nr)
+                            try:
+                                normalized.sort(key=lambda x: int(x.get("rank") or 9999))
+                            except Exception:
+                                pass
+                            organic_by_kw_list.append({
+                                "keyword": kw,
+                                "results": normalized,
+                            })
+                    # Build a ranked 1-line summary per keyword for Tina quick-scan
+                    organic_summary_by_kw_list = []
+                    for item in organic_by_kw_list:
+                        kw = item.get("keyword")
+                        lines: list[str] = []
+                        for r in item.get("results", []) or []:
+                            try:
+                                rank = int(r.get("rank") or 0)
+                            except Exception:
+                                rank = 0
+                            host = ""
+                            try:
+                                from urllib.parse import urlparse
+                                host = urlparse(r.get("link") or "").netloc
+                            except Exception:
+                                pass
+                            title = r.get("title") or ""
+                            # Compose: #N domain — Title
+                            parts = []
+                            if rank:
+                                parts.append(f"#{rank}")
+                            if host:
+                                parts.append(host)
+                            if title:
+                                parts.append("— " + title)
+                            line = " ".join(parts).strip()
+                            if line:
+                                lines.append(line)
+                        # Ensure proper order by rank if present
+                        try:
+                            lines_sorted = [x for _, x in sorted(
+                                [
+                                    (int((r.get("rank") or 0)), f"#{int((r.get('rank') or 0))} {urlparse(r.get('link') or '').netloc} — {r.get('title') or ''}".strip())
+                                    for r in (item.get("results", []) or [])
+                                ],
+                                key=lambda t: (t[0] if t[0] else 9999)
+                            ) if _]
+                        except Exception:
+                            lines_sorted = lines
+                        organic_summary_by_kw_list.append({
+                            "keyword": kw,
+                            "lines": lines_sorted or lines,
+                        })
+
+                    # Raw serper JSON per keyword (only if captured this run)
+                    raw_serper_map = st.session_state.get("raw_serper_by_keyword", {})
+                    raw_serper_by_kw_list = []
+                    for k, payload in (raw_serper_map or {}).items():
+                        try:
+                            raw_serper_by_kw_list.append({
+                                "keyword": k,
+                                "payload": json.dumps(payload, ensure_ascii=False),
+                            })
+                        except Exception:
+                            # Fallback to string cast if non-serializable
+                            raw_serper_by_kw_list.append({
+                                "keyword": k,
+                                "payload": str(payload),
+                            })
+                    # PAA/Related as list structures for Tina readability
+                    paa_by_kw_list = []
+                    for k, qs in (report_paa_by_kw or {}).items():
+                        paa_by_kw_list.append({
+                            "keyword": k,
+                            "source": (report_paa_src_by_kw or {}).get(k, "unknown"),
+                            "questions": qs or [],
+                        })
+                    related_by_kw_list = []
+                    for k, qs in (report_rel_by_kw or {}).items():
+                        related_by_kw_list.append({
+                            "keyword": k,
+                            "source": (report_rel_src_by_kw or {}).get(k, "unknown"),
+                            "queries": qs or [],
+                        })
+                    # Serper config captured from current UI toggles
+                    serper_config = {
+                        "location": st.session_state.get("serper_location") if "serper_location" in st.session_state else None,
+                        "noCache": bool(st.session_state.get("serper_no_cache")) if "serper_no_cache" in st.session_state else False,
+                        "resultsPerQuery": int(st.session_state.get("results_per_query", 10)) if "results_per_query" in st.session_state else None,
+                    }
 
                     new_report = {
                         "reportId": report_id,
@@ -1104,6 +1247,13 @@ if st.session_state.get("show_analysis_results") and (
                         "relatedAggregated": report_rel_agg,
                         "relatedByKeyword": report_rel_by_kw,
                         "relatedSourceByKeyword": report_rel_src_by_kw,
+                        # Extended datasets for Tina visibility
+                        "organicByKeyword": organic_by_kw_list,
+                        "paaByKeywordList": paa_by_kw_list,
+                        "relatedByKeywordList": related_by_kw_list,
+                        "rawSerperByKeyword": raw_serper_by_kw_list,
+                        "organicSummaryByKeyword": organic_summary_by_kw_list,
+                        "serperConfig": serper_config,
                     }
                     
                     print(f"📝 Created report object with {len(new_report)} fields")
