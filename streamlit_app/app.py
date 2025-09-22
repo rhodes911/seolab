@@ -7,7 +7,7 @@ from datetime import datetime
 import streamlit as st
 
 from keyword_pipeline import expand_seeds, normalize_and_dedupe
-from serp import fetch_serp, fetch_page_headings, score_serp
+from serp import fetch_serp, fetch_page_headings, score_serp, fetch_paa_questions, fetch_related_searches, fetch_serper_json
 
 # === COMPREHENSIVE LOGGING SYSTEM ===
 def log_action(action_type, details):
@@ -503,6 +503,21 @@ with cols[3]:
     fetch_pages = st.checkbox("Fetch H1/H2 from top pages", value=True, key="fetch_headings")
     log_action("FETCH_PAGES_SETTING", f"Fetch pages: {fetch_pages}")
 
+# PAA toggle
+show_paa = st.checkbox("Fetch People Also Ask (PAA)", value=True, help="Pull PAA via serper.dev when available; fallback infers question-like headings from top pages")
+log_action("PAA_SETTING", f"Fetch PAA: {show_paa}")
+show_related = st.checkbox("Fetch Related Searches", value=True, help="Pull related searches via serper.dev when available")
+log_action("RELATED_SETTING", f"Fetch Related: {show_related}")
+show_raw_serper = st.checkbox("Show raw Serper JSON in results", value=False, help="Displays the exact serper.dev response for each keyword when using Google provider")
+log_action("RAW_SERPER_SETTING", f"Show raw: {show_raw_serper}")
+require_google_paa = st.checkbox("Require Google PAA (no fallback)", value=False, help="Only accept PAA when present in serper JSON. If missing, label 'google-missing' and skip")
+require_google_related = st.checkbox("Require Google Related (no fallback)", value=False, help="Only accept Related Searches when present in serper JSON. If missing, label 'google-missing' and skip")
+col_geo1, col_geo2 = st.columns([2, 1])
+with col_geo1:
+    serper_location = st.text_input("Serper location bias (optional)", value="Camberley, England, United Kingdom", help="Helps trigger local modules like PAA/Maps; examples: 'Camberley, England, United Kingdom' or a postcode")
+with col_geo2:
+    serper_no_cache = st.checkbox("No cache (fresh results)", value=False, help="Ask serper for fresh results to better match live SERPs")
+
 st.markdown("---")
 
 # 4) Run
@@ -531,11 +546,48 @@ if run_btn:
     log_action("ANALYSIS_CONFIG", f"Provider: {use_provider}, Keywords: {len(rows)}, Results per query: {results_per_query}")
 
     analysis_rows: list[dict] = []
+    paa_by_keyword: dict[str, list[str]] = {}
+    paa_source_by_keyword: dict[str, str] = {}
+    related_by_keyword: dict[str, list[str]] = {}
+    related_source_by_keyword: dict[str, str] = {}
     with st.status("Running SERP…", expanded=True) as status:
+        raw_serper_by_keyword: dict[str, dict] = {}
         for q in rows:
             st.write(f"Query: {q}")
             try:
-                results = fetch_serp(q, provider=use_provider, api_key=serper_key.strip() or None, num=int(results_per_query), locale="gb-en")
+                # Fetch serper raw JSON if needed (and provider is serper)
+                raw_serper = None
+                if use_provider == "serper" and (show_paa or show_related or show_raw_serper):
+                    try:
+                        raw_serper = fetch_serper_json(
+                            q,
+                            api_key=serper_key.strip(),
+                            num=int(results_per_query),
+                            locale="gb-en",
+                            location=(serper_location.strip() or None),
+                            no_cache=bool(serper_no_cache),
+                        )
+                    except Exception as e:
+                        st.caption(f"Raw Serper fetch failed for '{q}': {e}")
+
+                # Build results either from raw_serper or using fetch_serp (which also supports fallback)
+                if raw_serper is not None:
+                    # Map organic to SerpResult shape
+                    organic = raw_serper.get("organic") or []
+                    results = []
+                    for item in organic[: int(results_per_query)]:
+                        results.append(type("SR", (), {
+                            "title": item.get("title") or "",
+                            "link": item.get("link") or "",
+                            "snippet": item.get("snippet") or "",
+                            "__dict__": {
+                                "title": item.get("title") or "",
+                                "link": item.get("link") or "",
+                                "snippet": item.get("snippet") or "",
+                            }
+                        }))
+                else:
+                    results = fetch_serp(q, provider=use_provider, api_key=serper_key.strip() or None, num=int(results_per_query), locale="gb-en")
                 metrics = score_serp(results, seed=q)
                 st.json({
                     "difficulty": metrics["difficulty"],
@@ -548,6 +600,24 @@ if run_btn:
                 if fetch_pages:
                     for res in results[: min(5, len(results))]:
                         page_outlines.append(fetch_page_headings(res.link))
+                # Fetch PAA
+                paa_list: list[str] = []
+                paa_source: str = "none"
+                if show_paa:
+                    try:
+                        paa_list, paa_source = fetch_paa_questions(
+                            q,
+                            provider=use_provider,
+                            api_key=serper_key.strip() or None,
+                            results=results,
+                            outlines=page_outlines,
+                            raw=raw_serper,
+                            require_google_only=require_google_paa,
+                        )
+                    except Exception as e:
+                        st.caption(f"PAA fetch failed for '{q}': {e}")
+                        paa_list = []
+                        paa_source = "error"
                 row = {
                     "keyword": q,
                     "difficulty": metrics.get("difficulty"),
@@ -557,7 +627,22 @@ if run_btn:
                     "aggregators": metrics.get("aggregators"),
                     "results": [res.__dict__ for res in results],
                     "outlines": page_outlines,
+                    "paa": paa_list,
                 }
+                # Fetch Related Searches (after row built so headings are available)
+                if show_related:
+                    try:
+                        related_list, related_src = fetch_related_searches(
+                            q,
+                            provider=use_provider,
+                            api_key=serper_key.strip() or None,
+                            raw=raw_serper,
+                            require_google_only=require_google_related,
+                        )
+                    except Exception as e:
+                        st.caption(f"Related searches fetch failed for '{q}': {e}")
+                        related_list, related_src = [], "error"
+                    row["related"] = related_list
 
                 # Collect for analysis
                 analysis_rows.append({
@@ -570,6 +655,17 @@ if run_btn:
                     "is_local": any(s in q.lower() for s in ["local", "near me", "surrey", "camberley", "mytchett"]),
                     "is_smallbiz": any(s in q.lower() for s in ["small business", "local business"]),
                 })
+                if show_paa:
+                    paa_by_keyword[q] = paa_list
+                    paa_source_by_keyword[q] = paa_source
+                if show_related:
+                    related_by_keyword[q] = row.get("related", [])
+                    related_source_by_keyword[q] = related_src
+
+                # Show raw serper JSON if requested
+                if show_raw_serper and raw_serper is not None:
+                    # Store for later rendering outside of status (to avoid nested expanders)
+                    raw_serper_by_keyword[q] = raw_serper
 
             except Exception as e:
                 st.warning(f"Failed for '{q}': {e}")
@@ -577,6 +673,32 @@ if run_btn:
         
         # Store analysis flag in session state
         st.session_state["show_analysis_results"] = True
+    # Compute aggregated PAA
+        if show_paa:
+            agg_seen = set()
+            aggregated_paa: list[str] = []
+            for q, qs in paa_by_keyword.items():
+                for item in (qs or []):
+                    key = (item or "").strip().lower()
+                    if key and key not in agg_seen:
+                        agg_seen.add(key)
+                        aggregated_paa.append(item.strip())
+        else:
+            aggregated_paa = []
+        if show_related:
+            agg_r_seen = set()
+            aggregated_related: list[str] = []
+            for q, rs in related_by_keyword.items():
+                for item in (rs or []):
+                    key = (item or "").strip().lower()
+                    if key and key not in agg_r_seen:
+                        agg_r_seen.add(key)
+                        aggregated_related.append(item.strip())
+        else:
+            aggregated_related = []
+        # Stash raw serper JSON in session for later display
+        if show_raw_serper and raw_serper_by_keyword:
+            st.session_state["raw_serper_by_keyword"] = raw_serper_by_keyword
 
 # ========== Analysis Summary Display ==========
 # Check if we should show analysis results (either just completed or from session state)
@@ -734,6 +856,9 @@ if st.session_state.get("show_analysis_results") and (
             }
             
             # Store complete analysis data in session state for save functionality
+            # Pull PAA from local or existing session
+            existing_paa_by_kw = st.session_state.get("last_analysis_data", {}).get("paa_by_keyword") if st.session_state.get("last_analysis_data") else {}
+            existing_paa_agg = st.session_state.get("last_analysis_data", {}).get("paa_aggregated") if st.session_state.get("last_analysis_data") else []
             st.session_state["last_analysis_data"] = {
                 "analysis_rows": analysis_rows,
                 "analysis_out": analysis_out,
@@ -744,6 +869,12 @@ if st.session_state.get("show_analysis_results") and (
                 "easy_keywords": easy_keywords,
                 "moderate_keywords": moderate_keywords,
                 "hard_keywords": hard_keywords,
+                "paa_by_keyword": paa_by_keyword if 'paa_by_keyword' in locals() and paa_by_keyword else existing_paa_by_kw,
+                "paa_source_by_keyword": paa_source_by_keyword if 'paa_source_by_keyword' in locals() and paa_source_by_keyword else {},
+                "paa_aggregated": aggregated_paa if 'aggregated_paa' in locals() else existing_paa_agg,
+                "related_by_keyword": related_by_keyword if 'related_by_keyword' in locals() else {},
+                "related_source_by_keyword": related_source_by_keyword if 'related_source_by_keyword' in locals() else {},
+                "related_aggregated": aggregated_related if 'aggregated_related' in locals() else [],
                 "selected_page": selected_page,
                 "timestamp": datetime.now().isoformat()
             }
@@ -945,6 +1076,14 @@ if st.session_state.get("show_analysis_results") and (
                     debug_container.success(f"✅ Step 7: Generated report ID: {report_id}")
                     
                     # Create new report object
+                    # Include PAA in report if available
+                    report_paa_by_kw = st.session_state.get("last_analysis_data", {}).get("paa_by_keyword", {})
+                    report_paa_agg = st.session_state.get("last_analysis_data", {}).get("paa_aggregated", [])
+                    report_paa_src_by_kw = st.session_state.get("last_analysis_data", {}).get("paa_source_by_keyword", {})
+                    report_rel_by_kw = st.session_state.get("last_analysis_data", {}).get("related_by_keyword", {})
+                    report_rel_agg = st.session_state.get("last_analysis_data", {}).get("related_aggregated", [])
+                    report_rel_src_by_kw = st.session_state.get("last_analysis_data", {}).get("related_source_by_keyword", {})
+
                     new_report = {
                         "reportId": report_id,
                         "analysisDate": analysis_date,
@@ -959,6 +1098,12 @@ if st.session_state.get("show_analysis_results") and (
                         "topOpportunities": [r["keyword"] for r in analysis_opps[:10]],
                         "analysisNotes": [],  # bullets from stored data would need to be added
                         "nextSteps": [],      # steps from stored data would need to be added
+                        "paaAggregated": report_paa_agg,
+                        "paaByKeyword": report_paa_by_kw,
+                        "paaSourceByKeyword": report_paa_src_by_kw,
+                        "relatedAggregated": report_rel_agg,
+                        "relatedByKeyword": report_rel_by_kw,
+                        "relatedSourceByKeyword": report_rel_src_by_kw,
                     }
                     
                     print(f"📝 Created report object with {len(new_report)} fields")
@@ -1166,5 +1311,92 @@ if st.session_state.get("show_analysis_results") and (
                         for step in selected_report['nextSteps']:
                             st.write(f"• {step}")
                             
+        # PAA display and add-to-selection UX
+        if st.session_state.get("last_analysis_data", {}).get("paa_aggregated"):
+            st.markdown("---")
+            st.subheader("❓ People Also Ask (PAA)")
+            agg = st.session_state["last_analysis_data"]["paa_aggregated"]
+            st.caption(f"Aggregated across selected queries ({len(agg)} unique)")
+            # Show source badges per keyword
+            src_map = st.session_state.get("last_analysis_data", {}).get("paa_source_by_keyword", {})
+            if src_map:
+                with st.expander("PAA sources by keyword", expanded=False):
+                    for k, src in src_map.items():
+                        badge = (
+                            "Google" if src == "google" else (
+                                "Headings heuristic" if src == "headings" else (
+                                    "Google module missing" if src == "google-missing" else src
+                                )
+                            )
+                        )
+                        st.write(f"• {k}: {badge}")
+            with st.expander("Show aggregated PAA questions", expanded=False):
+                for q in agg:
+                    st.write(f"• {q}")
+            to_add = st.multiselect("Select PAA to add to your query list", options=agg, default=agg[: min(10, len(agg))])
+            if st.button("Add selected PAA to options"):
+                # Merge into options and selected, de-dup
+                cur_opts = st.session_state.get("options", [])
+                cur_sel = st.session_state.get("selected", [])
+                new_opts = cur_opts + [q for q in to_add if q not in cur_opts]
+                new_sel = cur_sel + [q for q in to_add if q not in cur_sel]
+                st.session_state["options"] = new_opts
+                st.session_state["selected"] = new_sel
+                st.success(f"Added {len(to_add)} PAA queries. They are now available in your selection.")
+                st.rerun()
+
+        if st.session_state.get("last_analysis_data", {}).get("related_aggregated"):
+            st.markdown("---")
+            st.subheader("🔗 Related Searches")
+            rel_agg = st.session_state["last_analysis_data"]["related_aggregated"]
+            st.caption(f"Aggregated across selected queries ({len(rel_agg)} unique)")
+            rel_src_map = st.session_state.get("last_analysis_data", {}).get("related_source_by_keyword", {})
+            if rel_src_map:
+                with st.expander("Related sources by keyword", expanded=False):
+                    for k, src in rel_src_map.items():
+                        badge = "Google" if src == "google" else ("Google module missing" if src == "google-missing" else src)
+                        st.write(f"• {k}: {badge}")
+            with st.expander("Show aggregated related searches", expanded=False):
+                for q in rel_agg:
+                    st.write(f"• {q}")
+            to_add_rel = st.multiselect("Select related searches to add to your query list", options=rel_agg, default=rel_agg[: min(10, len(rel_agg))])
+            if st.button("Add selected related to options"):
+                cur_opts = st.session_state.get("options", [])
+                cur_sel = st.session_state.get("selected", [])
+                new_opts = cur_opts + [q for q in to_add_rel if q not in cur_opts]
+                new_sel = cur_sel + [q for q in to_add_rel if q not in cur_sel]
+                st.session_state["options"] = new_opts
+                st.session_state["selected"] = new_sel
+                st.success(f"Added {len(to_add_rel)} related searches. They are now available in your selection.")
+                st.rerun()
+
+        # Show raw Serper JSON after results (outside status/other expanders nesting)
+        if show_raw_serper and st.session_state.get("raw_serper_by_keyword"):
+            st.markdown("---")
+            st.subheader("🧩 Raw serper.dev JSON")
+            raw_map = st.session_state.get("raw_serper_by_keyword", {})
+            # Let user pick a keyword to inspect JSON for
+            keys = list(raw_map.keys())
+            if keys:
+                sel = st.selectbox("Select keyword to view raw JSON", options=keys)
+                if sel:
+                    with st.expander(f"Raw JSON for: {sel}", expanded=False):
+                        st.json(raw_map[sel])
+                    # Normalized view to always show full structure
+                    raw = raw_map[sel] or {}
+                    norm = {
+                        "knowledgeGraph": raw.get("knowledgeGraph") or {},
+                        "organic": raw.get("organic") or [],
+                        "peopleAlsoAsk": raw.get("peopleAlsoAsk") or [],
+                        "relatedSearches": raw.get("relatedSearches") or [],
+                    }
+                    st.caption(
+                        f"Modules present — KG: {'yes' if raw.get('knowledgeGraph') else 'no'}, "
+                        f"PAA: {'yes' if raw.get('peopleAlsoAsk') else 'no'}, "
+                        f"Related: {'yes' if raw.get('relatedSearches') else 'no'}"
+                    )
+                    with st.expander("Normalized structure (empty arrays when missing)", expanded=False):
+                        st.json(norm)
+
         elif selected_page and not save_analysis:
             st.info("💡 Enable 'Save analysis results to selected page' to save results to TinaCMS")
