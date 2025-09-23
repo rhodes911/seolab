@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any, Optional, Tuple as _Tuple
 import re
 import streamlit as st
 import os
@@ -40,6 +40,173 @@ def inject_styles():
         + "</style>"
     )
     st.markdown(style_block, unsafe_allow_html=True)
+
+
+# ===== Shared modifier libraries & controls =====
+
+def _modifier_storage_file() -> str:
+    """Path to persistent storage for modifier libraries (within streamlit_app)."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, "modifier_libraries.json")
+
+
+def default_modifier_libraries() -> Dict[str, List[str]]:
+    """Default sets used when no saved JSON exists."""
+    return {
+        "prefixes": ["local", "professional", "expert", "top", "best", "experienced"],
+        "suffixes": ["services", "near me", "consultant", "company", "agency", "solutions", "specialist"],
+        "locations": ["Surrey", "Camberley", "Mytchett", "Woking", "Guildford", "Farnham", "Aldershot"],
+    }
+
+
+def load_modifier_libraries() -> Dict[str, List[str]]:
+    """Load persistent modifier libraries from JSON file and merge with defaults."""
+    defaults = default_modifier_libraries()
+    try:
+        path = _modifier_storage_file()
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                saved = json.load(f) or {}
+            # Merge with defaults to ensure all keys present
+            libs: Dict[str, List[str]] = {}
+            for k, vals in defaults.items():
+                s = saved.get(k) or []
+                # de-dupe while preserving order (saved first, then defaults)
+                seen = set()
+                merged: List[str] = []
+                for it in list(s) + [v for v in vals if v not in s]:
+                    if isinstance(it, str) and it.strip() and it not in seen:
+                        seen.add(it)
+                        merged.append(it)
+                libs[k] = merged
+            return libs
+    except Exception:
+        pass
+    return defaults
+
+
+def save_modifier_libraries(libs: Dict[str, List[str]]) -> bool:
+    try:
+        path = _modifier_storage_file()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(libs, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception:
+        return False
+
+
+def add_to_library(library_type: str, new_item: str) -> bool:
+    """Add a new item to a modifier library and save persistently."""
+    txt = (new_item or "").strip()
+    if not txt:
+        return False
+    libs = load_modifier_libraries()
+    if library_type in libs and txt not in libs[library_type]:
+        libs[library_type].append(txt)
+        return save_modifier_libraries(libs)
+    return False
+
+
+def ensure_modifier_session_defaults() -> Dict[str, List[str]]:
+    """Ensure session_state has options and selected lists for modifiers; return current libraries."""
+    libs = load_modifier_libraries()
+    if "prefix_options" not in st.session_state:
+        st.session_state["prefix_options"] = libs["prefixes"].copy()
+    if "suffix_options" not in st.session_state:
+        st.session_state["suffix_options"] = libs["suffixes"].copy()
+    if "location_options" not in st.session_state:
+        st.session_state["location_options"] = libs["locations"].copy()
+    if "selected_prefixes" not in st.session_state:
+        st.session_state["selected_prefixes"] = []
+    if "selected_suffixes" not in st.session_state:
+        st.session_state["selected_suffixes"] = []
+    if "selected_locations" not in st.session_state:
+        st.session_state["selected_locations"] = []
+    return libs
+
+
+def render_modifier_controls(key_prefix: str = "") -> _Tuple[List[str], List[str], List[str]]:
+    """
+    Render prefix/suffix/location controls with add-to-library actions.
+    Returns (selected_prefixes, selected_suffixes, selected_locations).
+    Keys are namespaced by key_prefix to avoid collisions when embedded in multiple places.
+    """
+    libs = ensure_modifier_session_defaults()
+
+    # Prefix modifiers
+    st.markdown("**Prefix modifiers**")
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        selected_prefixes = st.multiselect(
+            "Select prefix modifiers",
+            options=st.session_state["prefix_options"],
+            default=st.session_state.get("selected_prefixes", []),
+            key=f"{key_prefix}prefix_multiselect",
+            help="Qualifiers to prepend (e.g., local, small business)",
+        )
+        st.session_state["selected_prefixes"] = selected_prefixes
+    with c2:
+        new_prefix = st.text_input("Add new prefix", key=f"{key_prefix}new_prefix", placeholder="e.g. local")
+        if st.button("➕", key=f"{key_prefix}add_prefix", help="Add prefix") and new_prefix.strip():
+            if add_to_library("prefixes", new_prefix.strip()):
+                libs = load_modifier_libraries()
+                st.session_state["prefix_options"] = libs["prefixes"].copy()
+                if new_prefix.strip() not in st.session_state["selected_prefixes"]:
+                    st.session_state["selected_prefixes"].append(new_prefix.strip())
+                st.success(f"✅ Added '{new_prefix.strip()}' to prefix library")
+                st.rerun()
+
+    # Suffix modifiers
+    st.markdown("**Suffix modifiers**")
+    c3, c4 = st.columns([3, 1])
+    with c3:
+        selected_suffixes = st.multiselect(
+            "Select suffix modifiers",
+            options=st.session_state["suffix_options"],
+            default=st.session_state.get("selected_suffixes", []),
+            key=f"{key_prefix}suffix_multiselect",
+            help="Qualifiers to append (e.g., near me, for small business)",
+        )
+        st.session_state["selected_suffixes"] = selected_suffixes
+    with c4:
+        new_suffix = st.text_input("Add new suffix", key=f"{key_prefix}new_suffix", placeholder="e.g. near me")
+        if st.button("➕", key=f"{key_prefix}add_suffix", help="Add suffix") and new_suffix.strip():
+            if add_to_library("suffixes", new_suffix.strip()):
+                libs = load_modifier_libraries()
+                st.session_state["suffix_options"] = libs["suffixes"].copy()
+                if new_suffix.strip() not in st.session_state["selected_suffixes"]:
+                    st.session_state["selected_suffixes"].append(new_suffix.strip())
+                st.success(f"✅ Added '{new_suffix.strip()}' to suffix library")
+                st.rerun()
+
+    # Locations
+    st.markdown("**Locations**")
+    c5, c6 = st.columns([3, 1])
+    with c5:
+        selected_locations = st.multiselect(
+            "Select locations",
+            options=st.session_state["location_options"],
+            default=st.session_state.get("selected_locations", []),
+            key=f"{key_prefix}location_multiselect",
+            help="Service areas to include in variants",
+        )
+        st.session_state["selected_locations"] = selected_locations
+    with c6:
+        new_location = st.text_input("Add new location", key=f"{key_prefix}new_location", placeholder="e.g. Woking")
+        if st.button("➕", key=f"{key_prefix}add_location", help="Add location") and new_location.strip():
+            if add_to_library("locations", new_location.strip()):
+                libs = load_modifier_libraries()
+                st.session_state["location_options"] = libs["locations"].copy()
+                if new_location.strip() not in st.session_state["selected_locations"]:
+                    st.session_state["selected_locations"].append(new_location.strip())
+                st.success(f"✅ Added '{new_location.strip()}' to location library")
+                st.rerun()
+
+    return (
+        st.session_state.get("selected_prefixes", []),
+        st.session_state.get("selected_suffixes", []),
+        st.session_state.get("selected_locations", []),
+    )
 
 
 def render_callouts(md_lines: List[str]) -> List[str]:

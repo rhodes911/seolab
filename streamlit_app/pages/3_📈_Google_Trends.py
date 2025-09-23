@@ -2,8 +2,11 @@ from __future__ import annotations
 import os
 import sys
 import json
+import io
+import csv
 import streamlit as st
 import frontmatter
+from typing import List
 
 # Ensure repository root is on sys.path to import top-level packages like 'plugins'
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
@@ -15,12 +18,12 @@ try:
 except Exception:
     GoogleTrendsPlugin = None
 
-st.set_page_config(page_title="Google Trends", page_icon="📈", layout="wide")
 st.title("Google Trends 📈")
 st.caption("Use the page selector to load keywords, or use your current Seeds/Selected queries.")
 
 # Reuse the shared page selector from components
-from components import render_page_selector
+from components import render_page_selector, ensure_modifier_session_defaults, render_modifier_controls
+from keyword_pipeline import expand_seeds, normalize_and_dedupe
 
 # Default path to TinaCMS site (same as in app.py)
 ellie_root = r"C:\\Users\\rhode\\source\\repos\\EllieEdwardsMarketingLeadgenSite"
@@ -91,6 +94,60 @@ elif scope == "Selected queries":
 else:
     keywords = settings_keywords
 
+# ===== Selection & Modifiers =====
+st.markdown("---")
+st.subheader("Choose base keywords and apply modifiers")
+
+# Ensure modifier libraries are ready in session
+_ = ensure_modifier_session_defaults()
+
+base_opts: List[str] = keywords or []
+sel_col1, sel_col2 = st.columns([2, 1])
+with sel_col1:
+    selected_base = st.multiselect(
+        "Base keywords",
+        options=base_opts,
+        default=base_opts[: min(50, len(base_opts))],
+        help="Pick which of the page/site/selected keywords to use as seeds for expansion",
+        key="trends_base_multiselect",
+    )
+with sel_col2:
+    include_base = st.checkbox("Include base keywords in final set", value=True, key="trends_include_base")
+    max_per_seed = st.number_input("Max expansions per seed", min_value=5, max_value=50, value=20, step=5, key="trends_max_per_seed")
+
+mod_col = st.container()
+with mod_col:
+    st.caption("Add optional prefixes, suffixes, and locations. New items are saved for reuse across pages.")
+    sel_prefixes, sel_suffixes, sel_locations = render_modifier_controls(key_prefix="trends_")
+
+# Compute expanded keyword set (preview only; used below when running)
+prefix = list(sel_prefixes or [])
+suffix = list(sel_suffixes or []) + list(sel_locations or [])
+# Sanitize banned terms (mirror main app)
+banned = {"best", "affordable", "enterprise", "pricing", "price", "cheap", "cheapest"}
+prefix = [p for p in prefix if p.lower() not in banned]
+suffix = [s for s in suffix if s.lower() not in banned]
+
+expanded: List[str] = []
+if selected_base:
+    try:
+        expanded = expand_seeds(selected_base, prefix_mods=prefix, suffix_mods=suffix, max_per_seed=int(max_per_seed))
+        expanded = normalize_and_dedupe(expanded)
+    except Exception as e:
+        st.warning(f"Expansion failed: {e}")
+
+final_keywords: List[str] = []
+if include_base:
+    final_keywords.extend(selected_base)
+final_keywords.extend([k for k in expanded if k not in final_keywords])
+
+with st.expander("Preview final keyword list", expanded=False):
+    st.caption(f"{len(final_keywords)} total → base: {len(selected_base)} | expanded: {len(expanded)}")
+    st.write(final_keywords[:100])
+
+# Persist for run step
+st.session_state["trends_final_keywords"] = final_keywords
+
 tf_col1, tf_col2, tf_col3 = st.columns([1, 1, 1])
 with tf_col1:
     timeframe = st.selectbox(
@@ -106,7 +163,9 @@ with tf_col3:
 run = st.button("Fetch Google Trends", type="primary")
 
 if run:
-    if not keywords:
+    # Use prepared final keyword set
+    use_keywords = st.session_state.get("trends_final_keywords") or []
+    if not use_keywords:
         st.warning("No keywords available. In the main app, load a page to populate Seeds or generate/select queries.")
     elif GoogleTrendsPlugin is None:
         st.error("Google Trends plugin unavailable. Ensure 'pytrends' is installed in the env.")
@@ -115,7 +174,7 @@ if run:
             plugin = GoogleTrendsPlugin()
             ctx = {"locale": locale, "date_range": timeframe, "no_cache": bool(no_cache)}
             with st.spinner("Fetching Google Trends…"):
-                data = plugin.enrich_many(keywords, context=ctx)
+                data = plugin.enrich_many(use_keywords, context=ctx)
             st.session_state["trend_results"] = data
             st.success(f"Fetched trends for {len(data)} keyword(s)")
         except Exception as e:
@@ -127,7 +186,8 @@ if data:
     st.markdown("---")
     st.subheader("Latest results")
     with st.expander("Preview keywords used", expanded=False):
-        st.write(keywords[:25])
+        used = st.session_state.get("trends_final_keywords") or []
+        st.write(used[:100])
     rows = []
     for k, v in (data or {}).items():
         if isinstance(v, dict):
@@ -144,5 +204,49 @@ if data:
         except Exception:
             pass
         st.dataframe(rows, use_container_width=True)
+        # Export controls
+        exp_c1, exp_c2 = st.columns([1, 1])
+        # Build CSV from raw data for completeness
+        csv_buf = io.StringIO()
+        fieldnames = ["keyword", "trend_label", "trend_factor", "seasonality_peaks", "source"]
+        writer = csv.DictWriter(csv_buf, fieldnames=fieldnames)
+        writer.writeheader()
+        for k, v in (data or {}).items():
+            if not isinstance(v, dict):
+                continue
+            peaks_list = v.get("seasonality_peaks") or []
+            peaks_str = ";".join(str(x) for x in peaks_list)
+            writer.writerow({
+                "keyword": k,
+                "trend_label": v.get("trend_label"),
+                "trend_factor": v.get("trend_factor"),
+                "seasonality_peaks": peaks_str,
+                "source": v.get("source"),
+            })
+        csv_bytes = csv_buf.getvalue().encode("utf-8")
+        csv_buf.close()
+        # Filenames include locale/timeframe if available
+        try:
+            fn_locale = (locale or "gb-en").replace(" ", "_")
+        except Exception:
+            fn_locale = "gb-en"
+        try:
+            fn_tf = (timeframe or "today_12-m").replace(" ", "_")
+        except Exception:
+            fn_tf = "today_12-m"
+        with exp_c1:
+            st.download_button(
+                "Download CSV",
+                data=csv_bytes,
+                file_name=f"trends_{fn_locale}_{fn_tf}.csv",
+                mime="text/csv",
+            )
+        with exp_c2:
+            st.download_button(
+                "Download JSON",
+                data=json.dumps(data, ensure_ascii=False, indent=2),
+                file_name=f"trends_{fn_locale}_{fn_tf}.json",
+                mime="application/json",
+            )
     else:
         st.info("No trend data to display.")

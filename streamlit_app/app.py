@@ -6,9 +6,16 @@ import time
 from datetime import datetime
 import streamlit as st
 
+# Must be the first Streamlit command in this script
+st.set_page_config(page_title="Seed → Select → SERP", page_icon="🧩", layout="wide", initial_sidebar_state="collapsed")
+
 from keyword_pipeline import expand_seeds, normalize_and_dedupe
 from serp import fetch_serp, fetch_page_headings, score_serp, fetch_paa_questions, fetch_related_searches, fetch_serper_json
-from components import render_page_selector
+from components import (
+    render_page_selector,
+    ensure_modifier_session_defaults as ensure_modifier_session_defaults,
+    render_modifier_controls as render_modifier_controls,
+)
 
 # === COMPREHENSIVE LOGGING SYSTEM ===
 def log_action(action_type, details):
@@ -64,55 +71,8 @@ def add_js_logging():
     </script>
     """, unsafe_allow_html=True)
 
-# File paths for persistent storage
-MODIFIER_STORAGE_FILE = os.path.join(os.path.dirname(__file__), "modifier_libraries.json")
+"""Modifier storage and UI are centralized in components.py and reused across pages."""
 
-def load_modifier_libraries():
-    """Load persistent modifier libraries from JSON file"""
-    default_libraries = {
-        "prefixes": ["local", "professional", "expert", "top", "best", "affordable", "experienced"],
-        "suffixes": ["services", "near me", "consultant", "company", "agency", "solutions", "specialist"],
-        "locations": ["Surrey", "Camberley", "Mytchett", "Woking", "Guildford", "Farnham", "Aldershot"]
-    }
-    
-    try:
-        if os.path.exists(MODIFIER_STORAGE_FILE):
-            with open(MODIFIER_STORAGE_FILE, 'r', encoding='utf-8') as f:
-                saved_libraries = json.load(f)
-                # Merge with defaults to ensure we have all keys
-                for key in default_libraries:
-                    if key not in saved_libraries:
-                        saved_libraries[key] = default_libraries[key]
-                return saved_libraries
-    except Exception as e:
-        print(f"Error loading modifier libraries: {e}")
-    
-    return default_libraries
-
-def save_modifier_libraries(libraries):
-    """Save modifier libraries to JSON file"""
-    try:
-        with open(MODIFIER_STORAGE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(libraries, f, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        print(f"Error saving modifier libraries: {e}")
-        return False
-
-def add_to_library(library_type, new_item):
-    """Add a new item to a modifier library and save persistently"""
-    if not new_item.strip():
-        return False
-    
-    libraries = load_modifier_libraries()
-    if library_type in libraries:
-        if new_item.strip() not in libraries[library_type]:
-            libraries[library_type].append(new_item.strip())
-            return save_modifier_libraries(libraries)
-    return False
-
-
-st.set_page_config(page_title="Seed → Select → SERP", page_icon="🧩", layout="wide", initial_sidebar_state="collapsed")
 
 # Initialize logging after page config
 add_js_logging()
@@ -126,8 +86,8 @@ ellie_root = r"C:\Users\rhode\source\repos\EllieEdwardsMarketingLeadgenSite"
 # Reusable Page selector
 selected_page, page_data = render_page_selector(ellie_root)
 
-# Initialize session defaults using persistent libraries BEFORE widgets
-libraries = load_modifier_libraries()
+# Initialize modifier options in session before widgets
+libraries = ensure_modifier_session_defaults()
 
 if "seeds" not in st.session_state:
     st.session_state["seeds"] = "seo audit\nlocal seo\nkeyword research"
@@ -293,84 +253,7 @@ with col1:
         log_action("SEEDS_MODIFIED", f"Seeds changed to: {new_seeds.replace(chr(10), ' | ')}")
 
 with col2:
-    # Prefix modifiers section
-    st.markdown("**Prefix modifiers**")
-    col2a, col2b = st.columns([3, 1])
-    with col2a:
-        selected_prefixes = st.multiselect(
-            "Select prefix modifiers",
-            options=st.session_state["prefix_options"],
-            default=st.session_state["selected_prefixes"],
-            key="prefix_multiselect",
-            help="Qualifiers to prepend (e.g., local, small business)"
-        )
-        
-        # Log prefix selection changes
-        if selected_prefixes != st.session_state["selected_prefixes"]:
-            log_action("PREFIXES_CHANGED", f"Prefixes: {selected_prefixes}")
-        
-        st.session_state["selected_prefixes"] = selected_prefixes
-    with col2b:
-        new_prefix = st.text_input("Add new prefix", key="new_prefix", placeholder="e.g. local")
-        if st.button("➕", key="add_prefix", help="Add prefix") and new_prefix.strip():
-            log_action("PREFIX_ADDED", f"Adding new prefix: {new_prefix.strip()}")
-            if add_to_library("prefixes", new_prefix.strip()):
-                # Reload libraries to get the updated list
-                libraries = load_modifier_libraries()
-                st.session_state["prefix_options"] = libraries["prefixes"].copy()
-                if new_prefix.strip() not in st.session_state["selected_prefixes"]:
-                    st.session_state["selected_prefixes"].append(new_prefix.strip())
-                st.success(f"✅ Added '{new_prefix.strip()}' to prefix library")
-                st.rerun()
-    
-    # Suffix modifiers section  
-    st.markdown("**Suffix modifiers**")
-    col2c, col2d = st.columns([3, 1])
-    with col2c:
-        selected_suffixes = st.multiselect(
-            "Select suffix modifiers",
-            options=st.session_state["suffix_options"],
-            default=st.session_state["selected_suffixes"],
-            key="suffix_multiselect",
-            help="Qualifiers to append (e.g., near me, for small business)"
-        )
-        st.session_state["selected_suffixes"] = selected_suffixes
-    with col2d:
-        new_suffix = st.text_input("Add new suffix", key="new_suffix", placeholder="e.g. near me")
-        if st.button("➕", key="add_suffix", help="Add suffix") and new_suffix.strip():
-            if add_to_library("suffixes", new_suffix.strip()):
-                # Reload libraries to get the updated list
-                libraries = load_modifier_libraries()
-                st.session_state["suffix_options"] = libraries["suffixes"].copy()
-                if new_suffix.strip() not in st.session_state["selected_suffixes"]:
-                    st.session_state["selected_suffixes"].append(new_suffix.strip())
-                st.success(f"✅ Added '{new_suffix.strip()}' to suffix library")
-                st.rerun()
-    
-    # Locations section
-    st.markdown("**Locations**")
-    col2e, col2f = st.columns([3, 1])
-    with col2e:
-        selected_locations = st.multiselect(
-            "Select locations",
-            options=st.session_state["location_options"],
-            default=st.session_state["selected_locations"],
-            key="location_multiselect",
-            help="Service areas to include in variants"
-        )
-        st.session_state["selected_locations"] = selected_locations
-    with col2f:
-        new_location = st.text_input("Add new location", key="new_location", placeholder="e.g. Woking")
-        if st.button("➕", key="add_location", help="Add location") and new_location.strip():
-            if add_to_library("locations", new_location.strip()):
-                # Reload libraries to get the updated list
-                libraries = load_modifier_libraries()
-                st.session_state["location_options"] = libraries["locations"].copy()
-                if new_location.strip() not in st.session_state["selected_locations"]:
-                    st.session_state["selected_locations"].append(new_location.strip())
-                st.success(f"✅ Added '{new_location.strip()}' to location library")
-                st.rerun()
-                
+    selected_prefixes, selected_suffixes, selected_locations = render_modifier_controls()
     max_per_seed = st.number_input("Max expansions per seed", min_value=5, max_value=50, value=20, step=5)
 
 gen_cols = st.columns([1, 1, 1, 1])
@@ -403,11 +286,11 @@ if generate_btn:
     st.session_state["seeds_manually_modified"] = True
     
     seeds = _split_lines(st.session_state.get("seeds", ""))
-    prefix = st.session_state["selected_prefixes"].copy()
-    suffix = st.session_state["selected_suffixes"].copy()
+    prefix = selected_prefixes.copy()
+    suffix = selected_suffixes.copy()
     
     # Add selected locations to suffix
-    suffix.extend(st.session_state["selected_locations"])
+    suffix.extend(selected_locations)
 
     # Sanitize banned terms
     banned = {"best", "affordable", "enterprise", "pricing", "price", "cheap", "cheapest"}
