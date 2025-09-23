@@ -1,0 +1,11 @@
+{
+  "Mytchett": {
+    "trend_label": "declining",
+    "trend_factor": 0.9,
+    "seasonality_peaks": [
+      94,
+      98
+    ],
+    "source": "google_trends"
+  }
+}

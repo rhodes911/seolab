@@ -8,6 +8,7 @@ import streamlit as st
 
 from keyword_pipeline import expand_seeds, normalize_and_dedupe
 from serp import fetch_serp, fetch_page_headings, score_serp, fetch_paa_questions, fetch_related_searches, fetch_serper_json
+from components import render_page_selector
 
 # === COMPREHENSIVE LOGGING SYSTEM ===
 def log_action(action_type, details):
@@ -119,43 +120,11 @@ add_js_logging()
 st.title("Seed → Select → SERP 🧩")
 st.caption("Generate variants from seeds, curate the exact queries, and run SERP competitor analysis — all on one page, no sidebar.")
 
-# Page selector at the top
-st.subheader("📄 Page selector")
 # Direct path to TinaCMS site
 ellie_root = r"C:\Users\rhode\source\repos\EllieEdwardsMarketingLeadgenSite"
 
-# Discover available pages
-page_options = []
-page_data = {}
-
-if os.path.isdir(ellie_root):
-    # Main pages
-    for page_file in ["home.md", "about.md", "services.md", "contact.md", "blog.md", "case-studies.md", "faq.md"]:
-        page_path = os.path.join(ellie_root, "content", page_file)
-        if os.path.isfile(page_path):
-            page_name = page_file.replace(".md", "").replace("-", " ").title()
-            url_path = "/" if page_file == "home.md" else f"/{page_file.replace('.md', '')}"
-            page_options.append(f"{page_name} ({url_path})")
-            page_data[f"{page_name} ({url_path})"] = {
-                "file_path": page_path,
-                "url_path": url_path,
-                "type": "page"
-            }
-    
-    # Service pages
-    services_dir = os.path.join(ellie_root, "content", "services")
-    if os.path.isdir(services_dir):
-        for service_file in os.listdir(services_dir):
-            if service_file.endswith(".md"):
-                service_path = os.path.join(services_dir, service_file)
-                service_name = service_file.replace(".md", "").replace("-", " ").title()
-                url_path = f"/services/{service_file.replace('.md', '')}"
-                page_options.append(f"Service: {service_name} ({url_path})")
-                page_data[f"Service: {service_name} ({url_path})"] = {
-                    "file_path": service_path,
-                    "url_path": url_path,
-                    "type": "service"
-                }
+# Reusable Page selector
+selected_page, page_data = render_page_selector(ellie_root)
 
 # Initialize session defaults using persistent libraries BEFORE widgets
 libraries = load_modifier_libraries()
@@ -192,8 +161,6 @@ if "save_status_message" not in st.session_state:
     st.session_state["save_status_message"] = None
 if "analysis_summary" not in st.session_state:
     st.session_state["analysis_summary"] = None
-
-selected_page = st.selectbox("Select a page to analyze", options=[""] + page_options, index=0, key="page_selector")
 
 # Log page selection
 if selected_page:

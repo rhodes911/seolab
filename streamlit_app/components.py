@@ -406,3 +406,64 @@ def meta_preview_widget(slug: str, preset_label: Optional[str] = None, show_head
   <div style="color:#545454; font-size:13px;">{desc}</div>
 </div>
 """.format(title=title or "Example title", url=url or "example.com/page", desc=desc or "Example description"), unsafe_allow_html=True)
+
+
+def render_page_selector(ellie_root: str):
+    """
+    Renders the 📄 Page selector used to bind to the TinaCMS site content.
+
+    Returns a tuple of (selected_page_label, page_data), where page_data maps labels to
+    { file_path, url_path, type }.
+    """
+    from typing import Dict, Any, List, Optional
+    st.subheader("📄 Page selector")
+
+    page_options: List[str] = []
+    page_data: Dict[str, Dict[str, Any]] = {}
+
+    if os.path.isdir(ellie_root):
+        # Main pages
+        for page_file in [
+            "home.md",
+            "about.md",
+            "services.md",
+            "contact.md",
+            "blog.md",
+            "case-studies.md",
+            "faq.md",
+        ]:
+            page_path = os.path.join(ellie_root, "content", page_file)
+            if os.path.isfile(page_path):
+                page_name = page_file.replace(".md", "").replace("-", " ").title()
+                url_path = "/" if page_file == "home.md" else f"/{page_file.replace('.md', '')}"
+                label = f"{page_name} ({url_path})"
+                page_options.append(label)
+                page_data[label] = {
+                    "file_path": page_path,
+                    "url_path": url_path,
+                    "type": "page",
+                }
+
+        # Service pages
+        services_dir = os.path.join(ellie_root, "content", "services")
+        if os.path.isdir(services_dir):
+            for service_file in os.listdir(services_dir):
+                if service_file.endswith(".md"):
+                    service_path = os.path.join(services_dir, service_file)
+                    service_name = service_file.replace(".md", "").replace("-", " ").title()
+                    url_path = f"/services/{service_file.replace('.md', '')}"
+                    label = f"Service: {service_name} ({url_path})"
+                    page_options.append(label)
+                    page_data[label] = {
+                        "file_path": service_path,
+                        "url_path": url_path,
+                        "type": "service",
+                    }
+
+    selected_page = st.selectbox(
+        "Select a page to analyze",
+        options=[""] + page_options,
+        index=0,
+        key="page_selector",
+    )
+    return (selected_page or None), page_data
